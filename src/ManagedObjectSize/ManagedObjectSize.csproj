@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>ManagedObjectSize</PackageId>
+    <Version>0.0.1</Version>
+    <Authors>Christian Klutz</Authors>
+    <Description>
+      Attempts to calculate the memory size of managed objects from within the application itself.
+
+      Algorithm, ideas and more based on:
+      - ClrMR (https://github.com/microsoft/clrmd)
+      - dotnet runtime (https://github.com/dotnet/runtime)
+    </Description>
+    <InformationalVersion>$(Version).0</InformationalVersion>
+    <FileVersion>$(Version).0</FileVersion>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <RepositoryUrl>https://github.com/cklutz/ManagedObjectSize</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>ManagedObjectSize.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>
