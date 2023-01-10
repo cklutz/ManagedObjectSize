@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Xml.Linq;
 
 namespace ManagedObjectSize
 {
@@ -103,29 +104,21 @@ namespace ManagedObjectSize
                     Console.WriteLine($"[{count:N0}] {(totalSize - currSize):N0} -> {totalSize:N0} ({currSize:N0}: {currentObject.GetType()})");
                 }
 
-                var objType = obj.GetType();
+                var currentType = currentObject.GetType();
 
-                if (objType == typeof(string))
+                if (currentType == typeof(string))
                 {
                     // String is a special object type in the CLR. We have already recorded the correct length of it
                     // by using GetObjectExclusiveSize().
                     continue;
                 }
 
-                // Non reference type fields are "in place" in the actual type and thus are already included in
-                // GetObjectExclusiveSize(). This is also true for custom value types.
-                foreach (var field in GetReferenceTypeFields(objType))
+                if (currentType.IsArray)
                 {
-                    var fieldValue = field.GetValue(obj);
-                    if (fieldValue != null)
-                    {
-                        ulong fieldAddr = (ulong)GetHeapPointer(fieldValue);
-                        if (!considered.Contains(fieldAddr))
-                        {
-                            eval.Push(fieldValue);
-                        }
-                    }
+                    HandleArray(eval, considered, currentObject, currentType);
                 }
+
+                AddFields(eval, considered, currentObject, currentType);
             }
 
             if ((options & ObjectSizeOptions.DebugOutput) != 0)
@@ -134,6 +127,50 @@ namespace ManagedObjectSize
             }
 
             return totalSize;
+        }
+
+        private static unsafe void HandleArray(Stack<object> eval, HashSet<ulong> considered, object obj, Type objType)
+        {
+            var elementType = objType.GetElementType();
+            if (elementType != null)
+            {
+                foreach (object element in (System.Collections.IEnumerable)obj)
+                {
+                    if (element != null)
+                    {
+                        if (!elementType.IsValueType)
+                        {
+                            ulong elementAddr = (ulong)GetHeapPointer(element);
+                            if (!considered.Contains(elementAddr))
+                            {
+                                eval.Push(element);
+                            }
+                        }
+                        else
+                        {
+                            AddFields(eval, considered, element, elementType);
+                        }
+                    }
+                }
+            }
+        }
+
+        private static unsafe void AddFields(Stack<object> eval, HashSet<ulong> considered, object currentObject, Type objType)
+        {
+            // Non reference type fields are "in place" in the actual type and thus are already included in
+            // GetObjectExclusiveSize(). This is also true for custom value types.
+            foreach (var field in GetReferenceTypeFields(objType))
+            {
+                var fieldValue = field.GetValue(currentObject);
+                if (fieldValue != null)
+                {
+                    ulong fieldAddr = (ulong)GetHeapPointer(fieldValue);
+                    if (!considered.Contains(fieldAddr))
+                    {
+                        eval.Push(fieldValue);
+                    }
+                }
+            }
         }
 
         private static IEnumerable<FieldInfo> GetReferenceTypeFields(Type type)
@@ -294,8 +331,10 @@ namespace ManagedObjectSize
             [FieldOffset(4)]
             public uint BaseSize;
 
+            private const uint enum_flag_ContainsPointers = 0x01000000;
             private const uint enum_flag_HasComponentSize = 0x80000000;
             public bool HasComponentSize => (Flags & enum_flag_HasComponentSize) != 0;
+            public bool ContainsPointers => (Flags & enum_flag_ContainsPointers) != 0;
         }
     }
 }

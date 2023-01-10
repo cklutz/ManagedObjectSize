@@ -12,6 +12,8 @@ namespace ManagedObjectSize.Tests
         [DataRow(ObjectSizeOptions.UseRtHelpers)]
         public void Test(ObjectSizeOptions options)
         {
+            options |= ObjectSizeOptions.DebugOutput;
+
             // References are on stack and won't be moved by GC.
             // So when we take their address for use in ClrMD code
             // below, it should still be valid.
@@ -24,6 +26,8 @@ namespace ManagedObjectSize.Tests
             var alignedDoubleAuto = new AlignedDoubleAuto();
             var intArray = new int[] { 1, 2, 3 };
             var empty = new Empty();
+            var valueRefArray = new[] { new ValueTypeWithRef("1") , new ValueTypeWithRef("1") };
+            var refArray = new[] { new TypeWithRef("1"), new TypeWithRef("2") };
 
             var sizes = new Dictionary<ulong, (Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
 
@@ -36,6 +40,8 @@ namespace ManagedObjectSize.Tests
             GetSize(options, alignedDoubleSeq, sizes);
             GetSize(options, alignedDoubleAuto, sizes);
             GetSize(options, intArray, sizes);
+            GetSize(options, valueRefArray, sizes);
+            GetSize(options, refArray, sizes);
 
             using (var dt = DataTarget.CreateSnapshotAndAttach(Process.GetCurrentProcess().Id))
             {
@@ -45,11 +51,14 @@ namespace ManagedObjectSize.Tests
                     {
                         var clrObj = runtime.Heap.GetObject(address);
                         Assert.IsTrue(clrObj.IsValid, address.ToString());
-                        Assert.AreEqual(sizes[address].Type.FullName, clrObj.Type?.ToString(), address.ToString());
+
+                        string id = address.ToString() + ": " + clrObj.Type;
+
+                        Assert.AreEqual(sizes[address].Type.FullName, clrObj.Type?.ToString(), id);
                         (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, (options & ObjectSizeOptions.DebugOutput) != 0);
-                        Assert.AreEqual(sizes[address].Count, count, address.ToString());
-                        Assert.AreEqual(sizes[address].InclusiveSize, (long)inclusiveSize, address.ToString());
-                        Assert.AreEqual(sizes[address].ExclusiveSize, (long)exclusiveSize, address.ToString());
+                        Assert.AreEqual(sizes[address].Count, count, id);
+                        Assert.AreEqual(sizes[address].InclusiveSize, (long)inclusiveSize, id);
+                        Assert.AreEqual(sizes[address].ExclusiveSize, (long)exclusiveSize, id);
                     }
                 }
             }
@@ -155,6 +164,24 @@ namespace ManagedObjectSize.Tests
 
             public int Int32Value1 = 1;
             public int Int32Value2 = 2;
+        }
+
+        private struct ValueTypeWithRef
+        {
+            public ValueTypeWithRef(string s)
+            {
+                Value = s;
+            }
+            public string Value;
+        }
+
+        private class TypeWithRef
+        {
+            public TypeWithRef(string s)
+            {
+                Value = s;
+            }
+            public string Value;
         }
     }
 }
