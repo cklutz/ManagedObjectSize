@@ -1,5 +1,7 @@
 # ManagedObjectSize
 
+[![Windows](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows.yml)
+
 Attempts to calculate the size of managed options (heap size) from within an application.
 
 The algorithm and ideas are based largely on work from
