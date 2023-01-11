@@ -1,5 +1,4 @@
-﻿using System;
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -64,9 +63,17 @@ namespace ManagedObjectSize
         /// <param name="obj">Object to calculate size of.</param>
         /// <param name="options">Options to apply during calculation.</param>
         /// <param name="count">Outputs the number of object references seen during calculation.</param>
+        /// <param name="timeout">Time after which the operation is to be aborted; <c>null</c> disables timeout.</param>
+        /// <param name="cancellationToken">Cancel the operation.</param>
         /// <returns>Approximate size of managed object and its reference graph.</returns>
-        public static unsafe long GetObjectInclusiveSize(object obj, ObjectSizeOptions options, out long count)
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> has been canceled.</exception>
+        /// <exception cref="TimeoutException">The <paramref name="timeout"/> has elapsed.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An invalid <paramref name="timeout"/> was specified.</exception>
+        public static unsafe long GetObjectInclusiveSize(object obj, ObjectSizeOptions options, out long count,
+            TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
         {
+            long stopTime = GetStopTime(timeout);
             long totalSize = 0;
             count = 0;
 
@@ -82,21 +89,31 @@ namespace ManagedObjectSize
 
             while (eval.Count > 0)
             {
+                // Check abort conditions.
+                cancellationToken.ThrowIfCancellationRequested();
+                if (stopTime != -1)
+                {
+                    CheckStopTime(stopTime, totalSize, count, timeout.Value);
+                }
+
                 var currentObject = eval.Pop();
                 if (currentObject == null)
                 {
+                    // Cannot get the size for a "null" object.
                     continue;
                 }
 
                 ulong objAddr = (ulong)GetHeapPointer(currentObject);
                 if (!considered.Add(objAddr))
                 {
+                    // Already seen this object.
                     continue;
                 }
 
                 var currentType = currentObject.GetType();
                 if (currentType == typeof(Pointer) || currentType.IsPointer)
                 {
+                    // Pointers are not considered.
                     continue;
                 }
 
@@ -108,7 +125,6 @@ namespace ManagedObjectSize
                 {
                     Console.WriteLine($"[{count:N0}] {(totalSize - currSize):N0} -> {totalSize:N0} ({currSize:N0}: {currentObject.GetType()})");
                 }
-
 
                 if (currentType == typeof(string))
                 {
@@ -131,6 +147,31 @@ namespace ManagedObjectSize
             }
 
             return totalSize;
+        }
+
+        private static long GetStopTime(TimeSpan? timeout)
+        {
+            if (timeout != null)
+            {
+                if (timeout.Value.TotalMilliseconds < 0 || timeout.Value.TotalMilliseconds > (int.MaxValue - 1))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(timeout), timeout, null);
+                }
+
+                return Environment.TickCount64 + (int)(timeout.Value.TotalMilliseconds + 0.5);
+            }
+
+            return -1;
+        }
+
+        private static void CheckStopTime(long stopAt, long totalSize, long count, TimeSpan timeout)
+        {
+            if (Environment.TickCount64 >= stopAt)
+            {
+                throw new TimeoutException(
+                    $"The allotted time of {timeout} to determine the inclusive size of the object (graph) has passed. " +
+                    $"The incomplete result so far is {totalSize:N0} bytes for processing {count:N0} objects. ");
+            }
         }
 
         private static unsafe void HandleArray(Stack<object> eval, HashSet<ulong> considered, object obj, Type objType)

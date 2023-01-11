@@ -9,6 +9,47 @@ namespace ManagedObjectSize.Tests
     [TestClass]
     public class ObjectSizeTests
     {
+        [TestMethod]
+        public void ObjectSize_AbortsIfCancellationIsRequested()
+        {
+            const int timeoutMilliseconds = 1;
+
+            using (var cts = new CancellationTokenSource())
+            {
+                cts.CancelAfter(timeoutMilliseconds);
+
+                // Wait ten times as long, as the timeout is. Then start.
+                // This should ensure that we get canceled right away.
+                Thread.Sleep(timeoutMilliseconds * 10);
+
+                Assert.ThrowsException<OperationCanceledException>(() =>
+                {
+                    ObjectSize.GetObjectInclusiveSize("", ObjectSizeOptions.Default, out _, null, cts.Token);
+                });
+            }
+        }
+
+        [TestMethod]
+        public void ObjectSize_UsesTimeoutIfConfigured()
+        {
+            // Shortest possible timeout is 1 tick.
+            // For any non-null object graph that should be small enough to actually trigger the
+            // timeout - hopefully. If we see spurious test failures here, we might need to re-
+            // check or provide some sort of mock support for the timeout calculation inside.
+            var timeout = TimeSpan.FromTicks(1);
+
+            Assert.ThrowsException<TimeoutException>(() =>
+            {
+                ObjectSize.GetObjectInclusiveSize(new ExampleHolder(), ObjectSizeOptions.Default, out _, timeout);
+            });
+        }
+
+        [TestMethod]
+        public void ObjectSize_Null_ReturnsZero()
+        {
+            Assert.AreEqual(0, ObjectSize.GetObjectInclusiveSize(null));
+        }
+
         // We could also use [DynamicData] to conduct the test of different objects/types, which would
         // result in possibly better diagnostics for failed tests, continue running if one test fails,
         // and report the "true" number of tests, not just 2 as it is now.
