@@ -184,20 +184,16 @@ namespace ManagedObjectSize
             return **(IntPtr**)(&indirect);
         }
 
-
+        // "Constants" are adapted from vm/object.h.
         private static readonly uint ObjHeaderSize = (uint)IntPtr.Size;
         private static readonly uint ObjSize = (uint)IntPtr.Size;
         private static readonly uint ObjBaseSize = ObjHeaderSize + ObjSize;
         private static readonly uint MinObjSize = (2 * (uint)IntPtr.Size) + ObjHeaderSize;
 
-
+        // The CoreCLR provides an internal "RuntimeHelpers.GetRawObjectDataSize()" method.
+        // We don't want to use it by default, but allow calling it to compare results.
         private delegate nuint GetRawObjectDataSize(object obj);
-        private static readonly Lazy<GetRawObjectDataSize> s_getRawObjectDataSize = new Lazy<GetRawObjectDataSize>(() =>
-        {
-            var bindingFlags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;
-            var method = typeof(RuntimeHelpers).GetMethod("GetRawObjectDataSize", bindingFlags)!;
-            return (GetRawObjectDataSize)Delegate.CreateDelegate(typeof(GetRawObjectDataSize), method);
-        });
+        private static GetRawObjectDataSize? s_getRawObjectDataSize;
         private static long GetObjectExclusiveSizeRtHelpers(object obj)
         {
             if (obj == null)
@@ -205,13 +201,18 @@ namespace ManagedObjectSize
                 return 0;
             }
 
-            long size = (long)s_getRawObjectDataSize.Value(obj);
-            // RuntimeHelpers.GetRawObjectDataSize strips off the "ObjectHeaderSize", hence the name "Data".
-            // For our purposes we want it included.
-            unsafe
+            var gros = LazyInitializer.EnsureInitialized(ref s_getRawObjectDataSize, () =>
             {
-                size += (2 * sizeof(IntPtr));
-            }
+                var bindingFlags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;
+                var method = typeof(RuntimeHelpers).GetMethod("GetRawObjectDataSize", bindingFlags)
+                    ?? throw new InvalidOperationException($"Method 'RuntimeHelpers.GetRawObjectDataSize()' not found");
+                return (GetRawObjectDataSize)Delegate.CreateDelegate(typeof(GetRawObjectDataSize), method);
+            });
+
+            long size = (long)gros(obj);
+            // RuntimeHelpers.GetRawObjectDataSize strips off the "ObjectBaseSize", hence the name "Data".
+            // For our purposes we want it included.
+            size += ObjBaseSize;
 
             return size < MinObjSize ? MinObjSize : size;
         }

@@ -1,19 +1,26 @@
-using Microsoft.Diagnostics.Runtime;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Microsoft.Diagnostics.Runtime;
 
 namespace ManagedObjectSize.Tests
 {
     [TestClass]
     public class ObjectSizeTests
     {
+        // We could also use [DynamicData] to conduct the test of different objects/types, which would
+        // result in possibly better diagnostics for failed tests, continue running if one test fails,
+        // and report the "true" number of tests, not just 2 as it is now.
+        // Using this, however, would also mean that a snapshot (using ClrMD) would be created per
+        // object/type. While this is relatively cheap on Windows, it would cause much longer times
+        // on Linux (where PSS snapshots are not supported and a core dump is generated each time,
+        // spawning createdump.exe, reloading the temp, etc.).
+
         [DataTestMethod]
         [DataRow(ObjectSizeOptions.Default)]
         [DataRow(ObjectSizeOptions.UseRtHelpers)]
-        public void Test(ObjectSizeOptions options)
+        public void ObjectSize_ReportsCorrectSize(ObjectSizeOptions options)
         {
-            options |= ObjectSizeOptions.DebugOutput;
-
             // References are on stack and won't be moved by GC.
             // So when we take their address for use in ClrMD code
             // below, it should still be valid.
@@ -26,51 +33,57 @@ namespace ManagedObjectSize.Tests
             var alignedDoubleAuto = new AlignedDoubleAuto();
             var intArray = new int[] { 1, 2, 3 };
             var empty = new Empty();
-            var valueRefArray = new[] { new ValueTypeWithRef("1") , new ValueTypeWithRef("1") };
+            var valueRefArray = new[] { new ValueTypeWithRef("1"), new ValueTypeWithRef("1") };
             var refArray = new[] { new TypeWithRef("1"), new TypeWithRef("2") };
 
-            var sizes = new Dictionary<ulong, (Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
+            var data = new Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
 
-            GetSize(options, empty, sizes);
-            GetSize(options, s, sizes);
-            GetSize(options, exampleHolder, sizes);
-            GetSize(options, exampleHolder2, sizes);
-            GetSize(options, exampleHolder3, sizes);
-            GetSize(options, exampleHolder4, sizes);
-            GetSize(options, alignedDoubleSeq, sizes);
-            GetSize(options, alignedDoubleAuto, sizes);
-            GetSize(options, intArray, sizes);
-            GetSize(options, valueRefArray, sizes);
-            GetSize(options, refArray, sizes);
+            GetSize(options, empty, data);
+            GetSize(options, s, data);
+            GetSize(options, exampleHolder, data);
+            GetSize(options, exampleHolder2, data);
+            GetSize(options, exampleHolder3, data);
+            GetSize(options, exampleHolder4, data);
+            GetSize(options, alignedDoubleSeq, data);
+            GetSize(options, alignedDoubleAuto, data);
+            GetSize(options, intArray, data);
+            GetSize(options, valueRefArray, data);
+            GetSize(options, refArray, data);
 
             using (var dt = DataTarget.CreateSnapshotAndAttach(Process.GetCurrentProcess().Id))
             {
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime())
                 {
-                    foreach (ulong address in sizes.Keys)
+                    foreach (ulong address in data.Keys)
                     {
+                        string currentName = data[address].Name;
+
                         var clrObj = runtime.Heap.GetObject(address);
-                        Assert.IsTrue(clrObj.IsValid, address.ToString());
 
-                        string id = address.ToString() + ": " + clrObj.Type;
+                        // Sanity check that address (still) refers to something valid.
+                        Assert.IsTrue(clrObj.IsValid, currentName + " IsValid");
 
-                        Assert.AreEqual(sizes[address].Type.FullName, clrObj.Type?.ToString(), id);
+                        // Make sure we are not comparing apples and oranges.
+                        Assert.AreEqual(data[address].Type.FullName, clrObj.Type?.ToString(), currentName + " Type");
+
+                        // Compare actual sizes
                         (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, (options & ObjectSizeOptions.DebugOutput) != 0);
-                        Assert.AreEqual(sizes[address].Count, count, id);
-                        Assert.AreEqual(sizes[address].InclusiveSize, (long)inclusiveSize, id);
-                        Assert.AreEqual(sizes[address].ExclusiveSize, (long)exclusiveSize, id);
+                        Assert.AreEqual(data[address].Count, count, currentName + " Count");
+                        Assert.AreEqual(data[address].InclusiveSize, (long)inclusiveSize, currentName + " InclusiveSize");
+                        Assert.AreEqual(data[address].ExclusiveSize, (long)exclusiveSize, currentName + " ExclusiveSize");
                     }
                 }
             }
         }
 
-        private static void GetSize(ObjectSizeOptions options, object obj, Dictionary<ulong, (Type Type, long Count, long ExclusiveSize, long InclusiveSize)> sizes)
+        private static void GetSize(ObjectSizeOptions options, object obj, Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)> sizes,
+            [CallerArgumentExpression("obj")] string? name = null)
         {
             long exclusiveSize = ObjectSize.GetObjectExclusiveSize(obj, options);
             long inclusiveSize = ObjectSize.GetObjectInclusiveSize(obj, options, out long count);
 
             ulong address = (ulong)ObjectSize.GetHeapPointer(obj);
-            sizes.Add(address, (obj.GetType(), count, exclusiveSize, inclusiveSize));
+            sizes.Add(address, (name!, obj.GetType(), count, exclusiveSize, inclusiveSize));
         }
 
         private static (int count, ulong size, ulong excSize) ObjSize(ClrObject input, bool debugOutput)
