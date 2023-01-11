@@ -24,7 +24,7 @@ namespace ManagedObjectSize
         /// </summary>
         /// <param name="obj">Object to calculate size of.</param>
         /// <returns>Approximate size of managed object.</returns>
-        public static long GetObjectExclusiveSize(object obj) => GetObjectExclusiveSize(obj, ObjectSizeOptions.Default);
+        public static long GetObjectExclusiveSize(object? obj) => GetObjectExclusiveSize(obj, ObjectSizeOptions.Default);
 
         /// <summary>
         /// Calculates approximate memory size of object itself, not accounting for sizes of referenced objects.
@@ -32,7 +32,7 @@ namespace ManagedObjectSize
         /// <param name="obj">Object to calculate size of.</param>
         /// <param name="options">Options to apply during calculation.</param>
         /// <returns>Approximate size of managed object.</returns>
-        public static long GetObjectExclusiveSize(object obj, ObjectSizeOptions options)
+        public static long GetObjectExclusiveSize(object? obj, ObjectSizeOptions options)
         {
             if ((options & ObjectSizeOptions.UseRtHelpers) != 0)
             {
@@ -47,7 +47,7 @@ namespace ManagedObjectSize
         /// </summary>
         /// <param name="obj">Object to calculate size of.</param>
         /// <returns>Approximate size of managed object and its reference graph.</returns>
-        public static long GetObjectInclusiveSize(object obj) => GetObjectInclusiveSize(obj, ObjectSizeOptions.Default, out _);
+        public static long GetObjectInclusiveSize(object? obj) => GetObjectInclusiveSize(obj, ObjectSizeOptions.Default, out _);
 
         /// <summary>
         /// Calculates approximate memory size of object and its reference graph, recursively adding up sizes of referenced objects.
@@ -55,7 +55,7 @@ namespace ManagedObjectSize
         /// <param name="obj">Object to calculate size of.</param>
         /// <param name="options">Options to apply during calculation.</param>
         /// <returns>Approximate size of managed object and its reference graph.</returns>
-        public static long GetObjectInclusiveSize(object obj, ObjectSizeOptions options) => GetObjectInclusiveSize(obj, options, out _);
+        public static long GetObjectInclusiveSize(object? obj, ObjectSizeOptions options) => GetObjectInclusiveSize(obj, options, out _);
 
         /// <summary>
         /// Calculates approximate memory size of object and its reference graph, recursively adding up sizes of referenced objects.
@@ -69,7 +69,7 @@ namespace ManagedObjectSize
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> has been canceled.</exception>
         /// <exception cref="TimeoutException">The <paramref name="timeout"/> has elapsed.</exception>
         /// <exception cref="ArgumentOutOfRangeException">An invalid <paramref name="timeout"/> was specified.</exception>
-        public static unsafe long GetObjectInclusiveSize(object obj, ObjectSizeOptions options, out long count,
+        public static unsafe long GetObjectInclusiveSize(object? obj, ObjectSizeOptions options, out long count,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default)
         {
@@ -93,7 +93,7 @@ namespace ManagedObjectSize
                 cancellationToken.ThrowIfCancellationRequested();
                 if (stopTime != -1)
                 {
-                    CheckStopTime(stopTime, totalSize, count, timeout.Value);
+                    CheckStopTime(stopTime, totalSize, count, timeout);
                 }
 
                 var currentObject = eval.Pop();
@@ -164,7 +164,7 @@ namespace ManagedObjectSize
             return -1;
         }
 
-        private static void CheckStopTime(long stopAt, long totalSize, long count, TimeSpan timeout)
+        private static void CheckStopTime(long stopAt, long totalSize, long count, TimeSpan? timeout)
         {
             if (Environment.TickCount64 >= stopAt)
             {
@@ -239,7 +239,7 @@ namespace ManagedObjectSize
         // We don't want to use it by default, but allow calling it to compare results.
         private delegate nuint GetRawObjectDataSize(object obj);
         private static GetRawObjectDataSize? s_getRawObjectDataSize;
-        private static long GetObjectExclusiveSizeRtHelpers(object obj)
+        private static long GetObjectExclusiveSizeRtHelpers(object? obj)
         {
             if (obj == null)
             {
@@ -262,7 +262,7 @@ namespace ManagedObjectSize
             return size < MinObjSize ? MinObjSize : size;
         }
 
-        private static long GetObjectExclusiveSizeInternal(object obj)
+        private static long GetObjectExclusiveSizeInternal(object? obj)
         {
             if (obj == null)
             {

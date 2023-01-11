@@ -266,7 +266,7 @@ namespace ManagedObjectSize.Tests
 
         private class SelfRef
         {
-            public SelfRef Ref;
+            public SelfRef? Ref;
         }
 
         private unsafe class TypeWithPointer
