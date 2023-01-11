@@ -12,15 +12,9 @@ namespace ManagedObjectSize.Tests
         [TestMethod]
         public void ObjectSize_AbortsIfCancellationIsRequested()
         {
-            const int timeoutMilliseconds = 1;
-
             using (var cts = new CancellationTokenSource())
             {
-                cts.CancelAfter(timeoutMilliseconds);
-
-                // Wait ten times as long, as the timeout is. Then start.
-                // This should ensure that we get canceled right away.
-                Thread.Sleep(timeoutMilliseconds * 10);
+                cts.Cancel();
 
                 Assert.ThrowsException<OperationCanceledException>(() =>
                 {
