@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Diagnostics.Runtime;
 
 namespace ManagedObjectSize.Tests
@@ -19,36 +20,58 @@ namespace ManagedObjectSize.Tests
         [DataTestMethod]
         [DataRow(ObjectSizeOptions.Default)]
         [DataRow(ObjectSizeOptions.UseRtHelpers)]
-        public void ObjectSize_ReportsCorrectSize(ObjectSizeOptions options)
+        public unsafe void ObjectSize_ReportsCorrectSize(ObjectSizeOptions options)
         {
+            var data = new Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
+
             // References are on stack and won't be moved by GC.
             // So when we take their address for use in ClrMD code
             // below, it should still be valid.
-            string s = "Hello World";
+            var empty = new Empty();
+            var valueEmpty = new ValueEmpty();
+            string @string = "Hello World";
             var exampleHolder = new ExampleHolder();
             var exampleHolder2 = new ExampleHolder2();
             var exampleHolder3 = new ExampleHolder3();
             var exampleHolder4 = new ExampleHolder4();
             var alignedDoubleSeq = new AlignedDoubleSequential();
             var alignedDoubleAuto = new AlignedDoubleAuto();
-            var intArray = new int[] { 1, 2, 3 };
-            var empty = new Empty();
+            var stringBuilder = new StringBuilder("Hello There");
+            var selfRef = new SelfRef { Ref = new SelfRef() };
+            selfRef.Ref.Ref = selfRef;
+            var withPointer = new TypeWithPointer { Ptr = (void*)ObjectSize.GetHeapPointer(@string) };
+
+            var valueArray = new int[] { 1, 2, 3 };
             var valueRefArray = new[] { new ValueTypeWithRef("1"), new ValueTypeWithRef("1") };
             var refArray = new[] { new TypeWithRef("1"), new TypeWithRef("2") };
+            var pointerArray = new void*[] { (void*)ObjectSize.GetHeapPointer(@string), (void*)ObjectSize.GetHeapPointer(empty) };
+            var emptyValueArray = new int[] { };
+            var emptyRefArray = new Empty[] { };
+            var emptyValueRefArray = new ValueTypeWithRef[] { };
+            var emptyPointerArray = new void*[] { };
 
-            var data = new Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
-
+            // options |= ObjectSizeOptions.DebugOutput;
             GetSize(options, empty, data);
-            GetSize(options, s, data);
+            GetSize(options, valueEmpty, data);
+            GetSize(options, @string, data);
             GetSize(options, exampleHolder, data);
             GetSize(options, exampleHolder2, data);
             GetSize(options, exampleHolder3, data);
             GetSize(options, exampleHolder4, data);
             GetSize(options, alignedDoubleSeq, data);
             GetSize(options, alignedDoubleAuto, data);
-            GetSize(options, intArray, data);
+            GetSize(options, stringBuilder, data);
+            GetSize(options, selfRef, data);
+            GetSize(options, withPointer, data);
+
+            GetSize(options, valueArray, data);
             GetSize(options, valueRefArray, data);
             GetSize(options, refArray, data);
+            GetSize(options, pointerArray, data);
+            GetSize(options, emptyValueArray, data);
+            GetSize(options, emptyValueRefArray, data);
+            GetSize(options, emptyRefArray, data);
+            GetSize(options, emptyPointerArray, data);
 
             using (var dt = DataTarget.CreateSnapshotAndAttach(Process.GetCurrentProcess().Id))
             {
@@ -76,13 +99,15 @@ namespace ManagedObjectSize.Tests
             }
         }
 
-        private static void GetSize(ObjectSizeOptions options, object obj, Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)> sizes,
+        private static void GetSize(ObjectSizeOptions options, object obj,
+            Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)> sizes,
             [CallerArgumentExpression("obj")] string? name = null)
         {
             long exclusiveSize = ObjectSize.GetObjectExclusiveSize(obj, options);
             long inclusiveSize = ObjectSize.GetObjectInclusiveSize(obj, options, out long count);
 
             ulong address = (ulong)ObjectSize.GetHeapPointer(obj);
+
             sizes.Add(address, (name!, obj.GetType(), count, exclusiveSize, inclusiveSize));
         }
 
@@ -125,6 +150,7 @@ namespace ManagedObjectSize.Tests
         }
 
         private class Empty { }
+        private struct ValueEmpty { }
 
         [StructLayout(LayoutKind.Auto)]
         private struct AlignedDoubleAuto
@@ -195,6 +221,16 @@ namespace ManagedObjectSize.Tests
                 Value = s;
             }
             public string Value;
+        }
+
+        private class SelfRef
+        {
+            public SelfRef Ref;
+        }
+
+        private unsafe class TypeWithPointer
+        {
+            public void* Ptr;
         }
     }
 }

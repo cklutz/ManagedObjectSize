@@ -2,7 +2,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 namespace ManagedObjectSize
 {
@@ -95,6 +94,12 @@ namespace ManagedObjectSize
                     continue;
                 }
 
+                var currentType = currentObject.GetType();
+                if (currentType == typeof(Pointer) || currentType.IsPointer)
+                {
+                    continue;
+                }
+
                 long currSize = GetObjectExclusiveSize(currentObject, options);
                 count++;
                 totalSize += currSize;
@@ -104,7 +109,6 @@ namespace ManagedObjectSize
                     Console.WriteLine($"[{count:N0}] {(totalSize - currSize):N0} -> {totalSize:N0} ({currSize:N0}: {currentObject.GetType()})");
                 }
 
-                var currentType = currentObject.GetType();
 
                 if (currentType == typeof(string))
                 {
@@ -132,7 +136,7 @@ namespace ManagedObjectSize
         private static unsafe void HandleArray(Stack<object> eval, HashSet<ulong> considered, object obj, Type objType)
         {
             var elementType = objType.GetElementType();
-            if (elementType != null)
+            if (elementType != null && !elementType.IsPointer)
             {
                 foreach (object element in (System.Collections.IEnumerable)obj)
                 {
