@@ -2,8 +2,8 @@
 
 **Note:** _This library depends on internals of the CoreCLR. Currently tested with version 6.0, there is no guarantee it will work with future versions. You would be ill adviced, would you use this functionality for anything else than diagnostics or other, non vital to the core of your application, features._
 
-[![Windows](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows.yml)
-[![Ubuntu](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu.yml)
+* [![Windows CoreCLR 6.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-6.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-6.0.yml)
+* [![Ubuntu CoreCLR 6.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-6.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-6.0.yml)
 
 Attempts to calculate the size of managed options (heap size) from within an application.
 
