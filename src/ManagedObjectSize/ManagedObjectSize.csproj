@@ -8,7 +8,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>ManagedObjectSize</PackageId>
-    <Version>0.0.3</Version>
+    <Version>0.0.4</Version>
     <Authors>Christian Klutz</Authors>
     <Description>
       Attempts to calculate the memory size of managed objects from within the application itself.

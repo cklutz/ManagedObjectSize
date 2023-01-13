@@ -202,10 +202,15 @@ namespace ManagedObjectSize
 
         private static unsafe void AddFields(Stack<object> eval, HashSet<ulong> considered, object currentObject, Type objType)
         {
-            // Non reference type fields are "in place" in the actual type and thus are already included in
-            // GetObjectExclusiveSize(). This is also true for custom value types.
-            foreach (var field in GetReferenceTypeFields(objType))
+            foreach (var field in objType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
             {
+                if (field.FieldType.IsValueType)
+                {
+                    // Non reference type fields are "in place" in the actual type and thus are already included in
+                    // GetObjectExclusiveSize(). This is also true for custom value types.
+                    continue;
+                }
+
                 var fieldValue = field.GetValue(currentObject);
                 if (fieldValue != null)
                 {
@@ -218,11 +223,7 @@ namespace ManagedObjectSize
             }
         }
 
-        private static IEnumerable<FieldInfo> GetReferenceTypeFields(Type type)
-        {
-            return type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Where(fi => !fi.FieldType.IsValueType);
-        }
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe IntPtr GetHeapPointer(object @object)
         {
             var indirect = Unsafe.AsPointer(ref @object);

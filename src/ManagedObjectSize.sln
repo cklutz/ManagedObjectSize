@@ -5,7 +5,9 @@ VisualStudioVersion = 17.4.33205.214
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ManagedObjectSize", "ManagedObjectSize\ManagedObjectSize.csproj", "{05847415-B5F4-4998-B6AB-011BC434A46C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ManagedObjectSize.Tests", "ManagedObjectSize.Tests\ManagedObjectSize.Tests.csproj", "{F1B089A0-FF8D-4CD9-97FE-29826DAFEB91}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ManagedObjectSize.Tests", "ManagedObjectSize.Tests\ManagedObjectSize.Tests.csproj", "{F1B089A0-FF8D-4CD9-97FE-29826DAFEB91}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleApp", "SampleApp\SampleApp.csproj", "{1805F1BA-EB96-47F3-99F4-7B35F1613679}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{F1B089A0-FF8D-4CD9-97FE-29826DAFEB91}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F1B089A0-FF8D-4CD9-97FE-29826DAFEB91}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F1B089A0-FF8D-4CD9-97FE-29826DAFEB91}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1805F1BA-EB96-47F3-99F4-7B35F1613679}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1805F1BA-EB96-47F3-99F4-7B35F1613679}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1805F1BA-EB96-47F3-99F4-7B35F1613679}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1805F1BA-EB96-47F3-99F4-7B35F1613679}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -85,6 +85,10 @@ namespace ManagedObjectSize.Tests
             var emptyValueRefArray = new ValueTypeWithRef[] { };
             var emptyPointerArray = new void*[] { };
 
+            string internedString1 = String.Intern("INTERNED");
+            string internedString2 = String.Intern("INTERNED");
+            var internedStrings = new string[] { internedString1, internedString2 };
+
             // options |= ObjectSizeOptions.DebugOutput;
             GetSize(options, empty, data);
             GetSize(options, valueEmpty, data);
@@ -107,6 +111,8 @@ namespace ManagedObjectSize.Tests
             GetSize(options, emptyValueRefArray, data);
             GetSize(options, emptyRefArray, data);
             GetSize(options, emptyPointerArray, data);
+
+            GetSize(options, internedStrings, data);
 
             using (var dt = DataTarget.CreateSnapshotAndAttach(Process.GetCurrentProcess().Id))
             {
