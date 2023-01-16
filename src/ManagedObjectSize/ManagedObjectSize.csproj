@@ -8,7 +8,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>ManagedObjectSize</PackageId>
-    <Version>0.0.4</Version>
+    <Version>0.0.5</Version>
     <Authors>Christian Klutz</Authors>
     <Description>
       Attempts to calculate the memory size of managed objects from within the application itself.
@@ -19,14 +19,14 @@
     </Description>
     <InformationalVersion>$(Version).0</InformationalVersion>
     <FileVersion>$(Version).0</FileVersion>
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <RepositoryUrl>https://github.com/cklutz/ManagedObjectSize</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
