@@ -18,7 +18,8 @@ namespace ManagedObjectSize.Tests
 
                 Assert.ThrowsException<OperationCanceledException>(() =>
                 {
-                    ObjectSize.GetObjectInclusiveSize("", ObjectSizeOptions.Default, out _, null, cts.Token);
+                    var options = new ObjectSizeOptions { CancellationToken = cts.Token };
+                    ObjectSize.GetObjectInclusiveSize("", options);
                 });
             }
         }
@@ -26,15 +27,14 @@ namespace ManagedObjectSize.Tests
         [TestMethod]
         public void ObjectSize_UsesTimeoutIfConfigured()
         {
-            // Shortest possible timeout is 1 tick.
-            // For any non-null object graph that should be small enough to actually trigger the
-            // timeout - hopefully. If we see spurious test failures here, we might need to re-
-            // check or provide some sort of mock support for the timeout calculation inside.
-            var timeout = TimeSpan.FromTicks(1);
-
             Assert.ThrowsException<TimeoutException>(() =>
             {
-                ObjectSize.GetObjectInclusiveSize(new ExampleHolder(), ObjectSizeOptions.Default, out _, timeout);
+                // Shortest possible timeout is 1 tick.
+                // For any non-null object graph that should be small enough to actually trigger the
+                // timeout - hopefully. If we see spurious test failures here, we might need to re-
+                // check or provide some sort of mock support for the timeout calculation inside.
+                var options = new ObjectSizeOptions { Timeout = TimeSpan.FromTicks(1) };
+                ObjectSize.GetObjectInclusiveSize(new ExampleHolder(), options);
             });
         }
 
@@ -42,6 +42,140 @@ namespace ManagedObjectSize.Tests
         public void ObjectSize_Null_ReturnsZero()
         {
             Assert.AreEqual(0, ObjectSize.GetObjectInclusiveSize(null));
+        }
+
+        [TestMethod]
+        public void ObjectSize_IsStable()
+        {
+            long size = ObjectSize.GetObjectInclusiveSize(CreateData());
+
+            for (int i = 0; i < 10; i++)
+            {
+                Assert.AreEqual(size, ObjectSize.GetObjectInclusiveSize(CreateData()));
+            }
+
+            static object CreateData() => Enumerable.Repeat("all of same size", 100).ToList();
+        }
+
+        [DataTestMethod]
+        [DataRow(2)]
+        [DataRow(5)]
+        [DataRow(10)]
+        [DataRow(100)]
+        [DataRow(101)]
+        public void ObjectSize_ArrayReferences_Sampled(int sampleCount)
+        {
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData());
+
+            var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(), options);
+
+            // This *should* be true, because in our test data every element has the same size.
+            // In real live scenarios, where elements may vary in size, this will not be true
+            // most of the time.
+            Assert.AreEqual(directSize, sampledSize);
+
+            //static object CreateData() => Enumerable.Repeat(, 100).ToList();
+            static object CreateData()
+            {
+                var result = new List<ExampleType>();
+                for (int i = 0; i < 100; i++)
+                {
+                    result.Add(new ExampleType());
+                }
+                return result;
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(true, 2)]
+        [DataRow(true, 5)]
+        [DataRow(true, 10)]
+        [DataRow(true, 100)]
+        [DataRow(true, 101)]
+        [DataRow(false, 2)]
+        [DataRow(false, 5)]
+        [DataRow(false, 10)]
+        [DataRow(false, 100)]
+        [DataRow(false, 101)]
+        public void ObjectSize_ArrayReferenceWithStringMember_Sampled(bool equalStrings, int sampleCount)
+        {
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings));
+
+            var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings), options);
+
+            // This *should* be true, because in our test data every element has the same size.
+            // In real live scenarios, where elements may vary in size, this will not be true
+            // most of the time.
+            Assert.AreEqual(directSize, sampledSize);
+
+            static object CreateData(bool equal)
+            {
+                var result = new List<ExampleHolder>();
+                for (int i = 0; i < 100; i++)
+                {
+                    var obj = new ExampleHolder();
+                    obj.StringValue = equal ? "ccccc" : Guid.NewGuid().ToString();
+                    result.Add(obj);
+                }
+                return result;
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(true, 2)]
+        [DataRow(true, 5)]
+        [DataRow(true, 10)]
+        [DataRow(true, 100)]
+        [DataRow(true, 101)]
+        [DataRow(false, 2)]
+        [DataRow(false, 5)]
+        [DataRow(false, 10)]
+        [DataRow(false, 100)]
+        [DataRow(false, 101)]
+        public void ObjectSize_ArrayStrings_Sampled(bool equalStrings, int sampleCount)
+        {
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings));
+
+            var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings), options);
+
+            // This *should* be true, because in our test data every element has the same size.
+            // In real live scenarios, where elements may vary in size, this will not be true
+            // most of the time.
+            Assert.AreEqual(directSize, sampledSize);
+
+            static object CreateData(bool equal)
+            {
+                var result = new List<string>();
+                for (int i = 0; i < 100; i++)
+                {
+                    result.Add(equal ? "ccccc" : Guid.NewGuid().ToString());
+                }
+                return result;
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(2)]
+        [DataRow(5)]
+        [DataRow(10)]
+        [DataRow(100)]
+        [DataRow(101)]
+        public void ObjectSize_ArrayValueTypes_Sampled(int sampleCount)
+        {
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData());
+
+            var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(), options);
+
+            // This *should* be true, because in our test data every element has the same size.
+            // In real live scenarios, where elements may vary in size, this will not be true
+            // most of the time.
+            Assert.AreEqual(directSize, sampledSize);
+
+            static object CreateData() => Enumerable.Repeat(42, 100).ToList();
         }
 
         // We could also use [DynamicData] to conduct the test of different objects/types, which would
@@ -53,9 +187,9 @@ namespace ManagedObjectSize.Tests
         // spawning createdump.exe, reloading the temp, etc.).
 
         [DataTestMethod]
-        [DataRow(ObjectSizeOptions.Default)]
-        [DataRow(ObjectSizeOptions.UseRtHelpers)]
-        public unsafe void ObjectSize_ReportsCorrectSize(ObjectSizeOptions options)
+        [DataRow(false)]
+        [DataRow(true)]
+        public unsafe void ObjectSize_ReportsCorrectSize(bool useRtHelpers)
         {
             var data = new Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
 
@@ -78,7 +212,8 @@ namespace ManagedObjectSize.Tests
 
             var valueArray = new int[] { 1, 2, 3 };
             var valueRefArray = new[] { new ValueTypeWithRef("1"), new ValueTypeWithRef("1") };
-            var refArray = new[] { new TypeWithRef("1"), new TypeWithRef("2") };
+            var refArray = new[] { new ExampleType(), new ExampleType() };
+            var refWithStringArray = new[] { new TypeWithStringRef("1"), new TypeWithStringRef("2") };
             var pointerArray = new void*[] { (void*)ObjectSize.GetHeapPointer(@string), (void*)ObjectSize.GetHeapPointer(empty) };
             var emptyValueArray = new int[] { };
             var emptyRefArray = new Empty[] { };
@@ -89,7 +224,10 @@ namespace ManagedObjectSize.Tests
             string internedString2 = String.Intern("INTERNED");
             var internedStrings = new string[] { internedString1, internedString2 };
 
-            // options |= ObjectSizeOptions.DebugOutput;
+            var options = new ObjectSizeOptions();
+            options.UseRtHelpers = useRtHelpers;
+            options.DebugOutput = true;
+
             GetSize(options, empty, data);
             GetSize(options, valueEmpty, data);
             GetSize(options, @string, data);
@@ -106,6 +244,7 @@ namespace ManagedObjectSize.Tests
             GetSize(options, valueArray, data);
             GetSize(options, valueRefArray, data);
             GetSize(options, refArray, data);
+            GetSize(options, refWithStringArray, data);
             GetSize(options, pointerArray, data);
             GetSize(options, emptyValueArray, data);
             GetSize(options, emptyValueRefArray, data);
@@ -131,7 +270,7 @@ namespace ManagedObjectSize.Tests
                         Assert.AreEqual(data[address].Type.FullName, clrObj.Type?.ToString(), currentName + " Type");
 
                         // Compare actual sizes
-                        (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, (options & ObjectSizeOptions.DebugOutput) != 0);
+                        (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, options.DebugOutput);
                         Assert.AreEqual(data[address].Count, count, currentName + " Count");
                         Assert.AreEqual(data[address].InclusiveSize, (long)inclusiveSize, currentName + " InclusiveSize");
                         Assert.AreEqual(data[address].ExclusiveSize, (long)exclusiveSize, currentName + " ExclusiveSize");
@@ -170,7 +309,7 @@ namespace ManagedObjectSize.Tests
 
                 if (debugOutput)
                 {
-                    Console.WriteLine($"[{count:N0}] {(totalSize - curr.Size):N0} -> {totalSize:N0} ({curr.Size:N0}: {curr.Type})");
+                    Console.WriteLine($"[CLRMD] [{count:N0}] {(totalSize - curr.Size):N0} -> {totalSize:N0} ({curr.Size:N0}: {curr.Type})");
                 }
 
                 foreach (var obj in curr.EnumerateReferences(carefully: false, considerDependantHandles: false))
@@ -184,7 +323,7 @@ namespace ManagedObjectSize.Tests
 
             if (debugOutput)
             {
-                Console.WriteLine($"total: {totalSize:N0} ({input.Type})");
+                Console.WriteLine($"[CLRMD] total: {totalSize:N0} ({input.Type})");
             }
 
             return (count, totalSize, input.Size);
@@ -255,9 +394,9 @@ namespace ManagedObjectSize.Tests
             public string Value;
         }
 
-        private class TypeWithRef
+        private class TypeWithStringRef
         {
-            public TypeWithRef(string s)
+            public TypeWithStringRef(string s)
             {
                 Value = s;
             }

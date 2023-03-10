@@ -1,6 +1,10 @@
-﻿using System.Reflection;
+﻿using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Threading.Tasks.Dataflow;
+using System.Xml.Linq;
 
 namespace ManagedObjectSize
 {
@@ -24,7 +28,7 @@ namespace ManagedObjectSize
         /// </summary>
         /// <param name="obj">Object to calculate size of.</param>
         /// <returns>Approximate size of managed object.</returns>
-        public static long GetObjectExclusiveSize(object? obj) => GetObjectExclusiveSize(obj, ObjectSizeOptions.Default);
+        public static long GetObjectExclusiveSize(object? obj) => GetObjectExclusiveSize(obj, null);
 
         /// <summary>
         /// Calculates approximate memory size of object itself, not accounting for sizes of referenced objects.
@@ -32,9 +36,11 @@ namespace ManagedObjectSize
         /// <param name="obj">Object to calculate size of.</param>
         /// <param name="options">Options to apply during calculation.</param>
         /// <returns>Approximate size of managed object.</returns>
-        public static long GetObjectExclusiveSize(object? obj, ObjectSizeOptions options)
+        public static long GetObjectExclusiveSize(object? obj, ObjectSizeOptions? options)
         {
-            if ((options & ObjectSizeOptions.UseRtHelpers) != 0)
+            options = (options ?? new()).GetReadOnly();
+
+            if (options.UseRtHelpers)
             {
                 return GetObjectExclusiveSizeRtHelpers(obj);
             }
@@ -47,7 +53,7 @@ namespace ManagedObjectSize
         /// </summary>
         /// <param name="obj">Object to calculate size of.</param>
         /// <returns>Approximate size of managed object and its reference graph.</returns>
-        public static long GetObjectInclusiveSize(object? obj) => GetObjectInclusiveSize(obj, ObjectSizeOptions.Default, out _);
+        public static long GetObjectInclusiveSize(object? obj) => GetObjectInclusiveSize(obj, null, out _);
 
         /// <summary>
         /// Calculates approximate memory size of object and its reference graph, recursively adding up sizes of referenced objects.
@@ -55,7 +61,7 @@ namespace ManagedObjectSize
         /// <param name="obj">Object to calculate size of.</param>
         /// <param name="options">Options to apply during calculation.</param>
         /// <returns>Approximate size of managed object and its reference graph.</returns>
-        public static long GetObjectInclusiveSize(object? obj, ObjectSizeOptions options) => GetObjectInclusiveSize(obj, options, out _);
+        public static long GetObjectInclusiveSize(object? obj, ObjectSizeOptions? options) => GetObjectInclusiveSize(obj, options, out _);
 
         /// <summary>
         /// Calculates approximate memory size of object and its reference graph, recursively adding up sizes of referenced objects.
@@ -63,37 +69,57 @@ namespace ManagedObjectSize
         /// <param name="obj">Object to calculate size of.</param>
         /// <param name="options">Options to apply during calculation.</param>
         /// <param name="count">Outputs the number of object references seen during calculation.</param>
-        /// <param name="timeout">Time after which the operation is to be aborted; <c>null</c> disables timeout.</param>
-        /// <param name="cancellationToken">Cancel the operation.</param>
         /// <returns>Approximate size of managed object and its reference graph.</returns>
-        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> has been canceled.</exception>
-        /// <exception cref="TimeoutException">The <paramref name="timeout"/> has elapsed.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">An invalid <paramref name="timeout"/> was specified.</exception>
-        public static unsafe long GetObjectInclusiveSize(object? obj, ObjectSizeOptions options, out long count,
-            TimeSpan? timeout = null,
-            CancellationToken cancellationToken = default)
+        /// <exception cref="OperationCanceledException">The <paramref name="options"/>.<see cref="ObjectSizeOptions.CancellationToken"/> has been canceled.</exception>
+        /// <exception cref="TimeoutException">The <paramref name="options"/><see cref="ObjectSizeOptions.Timeout"/> has elapsed.</exception>
+        public static unsafe long GetObjectInclusiveSize(object? obj, ObjectSizeOptions? options, out long count)
         {
-            long stopTime = GetStopTime(timeout);
-            long totalSize = 0;
-            count = 0;
-
             if (obj == null)
             {
-                return totalSize;
+                count = 0;
+                return 0;
             }
 
+            options = (options ?? new()).GetReadOnly();
+
             var eval = new Stack<object>();
-            var considered = new HashSet<ulong>();
+            var state = new EvaluationState
+            {
+                Considered = new(),
+                StopTime = options.GetStopTime(Environment.TickCount64),
+                Options = options
+            };
 
             eval.Push(obj);
+            long totalSize = ProcessEvaluationStack(eval, state, out count);
+
+            if (options.DebugOutput)
+            {
+                Console.WriteLine($"total: {totalSize:N0} ({obj.GetType()})");
+            }
+
+            return totalSize;
+        }
+
+        private class EvaluationState
+        {
+            public long StopTime { get; set; }
+            public ObjectSizeOptions Options { get; set; } = null!;
+            public HashSet<ulong> Considered { get; set; } = null!;
+        }
+
+        private static unsafe long ProcessEvaluationStack(Stack<object> eval, EvaluationState state, out long count)
+        {
+            count = 0;
+            long totalSize = 0;
 
             while (eval.Count > 0)
             {
                 // Check abort conditions.
-                cancellationToken.ThrowIfCancellationRequested();
-                if (stopTime != -1)
+                state.Options.CancellationToken.ThrowIfCancellationRequested();
+                if (state.StopTime != -1)
                 {
-                    CheckStopTime(stopTime, totalSize, count, timeout);
+                    CheckStopTime(state.StopTime, totalSize, count, state.Options.Timeout);
                 }
 
                 var currentObject = eval.Pop();
@@ -104,7 +130,7 @@ namespace ManagedObjectSize
                 }
 
                 ulong objAddr = (ulong)GetHeapPointer(currentObject);
-                if (!considered.Add(objAddr))
+                if (!state.Considered.Add(objAddr))
                 {
                     // Already seen this object.
                     continue;
@@ -117,11 +143,20 @@ namespace ManagedObjectSize
                     continue;
                 }
 
-                long currSize = GetObjectExclusiveSize(currentObject, options);
-                count++;
+                long currSize;
+                if (currentObject is ArraySample arraySample)
+                {
+                    currSize = arraySample.Size;
+                    count += arraySample.ElementCount;
+                }
+                else
+                {
+                    currSize = GetObjectExclusiveSize(currentObject, state.Options);
+                    count++;
+                }
                 totalSize += currSize;
 
-                if ((options & ObjectSizeOptions.DebugOutput) != 0)
+                if (state.Options.DebugOutput)
                 {
                     Console.WriteLine($"[{count:N0}] {(totalSize - currSize):N0} -> {totalSize:N0} ({currSize:N0}: {currentObject.GetType()})");
                 }
@@ -135,33 +170,15 @@ namespace ManagedObjectSize
 
                 if (currentType.IsArray)
                 {
-                    HandleArray(eval, considered, currentObject, currentType);
+                    HandleArray(eval, state, currentObject, currentType);
                 }
-
-                AddFields(eval, considered, currentObject, currentType);
-            }
-
-            if ((options & ObjectSizeOptions.DebugOutput) != 0)
-            {
-                Console.WriteLine($"total: {totalSize:N0} ({obj.GetType()})");
+                else
+                {
+                    AddFields(eval, state.Considered, currentObject, currentType);
+                }
             }
 
             return totalSize;
-        }
-
-        private static long GetStopTime(TimeSpan? timeout)
-        {
-            if (timeout != null)
-            {
-                if (timeout.Value.TotalMilliseconds < 0 || timeout.Value.TotalMilliseconds > (int.MaxValue - 1))
-                {
-                    throw new ArgumentOutOfRangeException(nameof(timeout), timeout, null);
-                }
-
-                return Environment.TickCount64 + (int)(timeout.Value.TotalMilliseconds + 0.5);
-            }
-
-            return -1;
         }
 
         private static void CheckStopTime(long stopAt, long totalSize, long count, TimeSpan? timeout)
@@ -174,29 +191,121 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void HandleArray(Stack<object> eval, HashSet<ulong> considered, object obj, Type objType)
+        private static unsafe void HandleArray(Stack<object> eval, EvaluationState state, object obj, Type objType)
         {
             var elementType = objType.GetElementType();
             if (elementType != null && !elementType.IsPointer)
             {
-                foreach (object element in (System.Collections.IEnumerable)obj)
+                if (state.Options.ArraySampleCount != null)
                 {
-                    if (element != null)
+                    int sampleCount = state.Options.ArraySampleCount.GetValueOrDefault();
+
+                    // If we have less (actual, see comment about elementCount below) elements than the
+                    // sample size. Use the non sampled approach.
+                    if (!HasMoreElements(obj, sampleCount))
                     {
-                        if (!elementType.IsValueType)
+                        HandleArrayNonSampled(eval, state, obj, elementType);
+                        return;
+                    }
+
+                    int elementCount = 0;
+                    var localEval = new Stack<object>();
+                    var unused = new HashSet<ulong>();
+
+                    foreach (object element in (System.Collections.IEnumerable)obj)
+                    {
+                        if (element != null)
                         {
-                            ulong elementAddr = (ulong)GetHeapPointer(element);
-                            if (!considered.Contains(elementAddr))
+                            // We're only counting the elements that are actually non-null. This might
+                            // be less then the size of the array, when the array contains null elements.
+                            // On the other hand, if we could every element, we also count excess elements.
+                            // For example, the extra (unused) capacity of a List<>.
+                            // Only considering non-null elements is still correct, however, because null
+                            // elements don't contribute to the size.
+                            elementCount++;
+
+                            if (elementCount <= sampleCount)
                             {
-                                eval.Push(element);
+                                HandleArrayElement(localEval, unused, elementType, element);
                             }
                         }
-                        else
+                    }
+
+                    if (localEval.Count > 0)
+                    {
+                        double sampleSize = ProcessEvaluationStack(localEval, state, out long uniqueAddressCount);
+
+                        var sample = new ArraySample
                         {
-                            AddFields(eval, considered, element, elementType);
-                        }
+                            Size = (long)((sampleSize / uniqueAddressCount) * elementCount),
+                            ElementCount = elementCount
+                        };
+
+                        eval.Push(sample);
                     }
                 }
+                else
+                {
+                    HandleArrayNonSampled(eval, state, obj, elementType);
+                }
+            }
+        }
+
+        private static void AddRange(HashSet<ulong> first, HashSet<ulong> second)
+        {
+            foreach (ulong s in second)
+            {
+                first.Add(s);
+            }
+        }
+
+        private class ArraySample
+        {
+            public long Size { get; set; }
+            public int ElementCount { get; set; }
+        }
+
+        private static bool HasMoreElements(object obj, int max)
+        {
+            int count = 0;
+            foreach (object element in (System.Collections.IEnumerable)obj)
+            {
+                if (element != null)
+                {
+                    count++;
+                    if (count > max)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static unsafe void HandleArrayNonSampled(Stack<object> eval, EvaluationState state, object obj, Type elementType)
+        {
+            foreach (object element in (System.Collections.IEnumerable)obj)
+            {
+                if (element != null)
+                {
+                    HandleArrayElement(eval, state.Considered, elementType, element);
+                }
+            }
+        }
+
+        private static unsafe void HandleArrayElement(Stack<object> eval, HashSet<ulong> considered, Type elementType, object element)
+        {
+            if (!elementType.IsValueType)
+            {
+                ulong elementAddr = (ulong)GetHeapPointer(element);
+                if (!considered.Contains(elementAddr))
+                {
+                    eval.Push(element);
+                }
+            }
+            else
+            {
+                AddFields(eval, considered, element, elementType);
             }
         }
 
