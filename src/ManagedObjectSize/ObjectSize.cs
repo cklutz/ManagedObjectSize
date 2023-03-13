@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ObjectiveC;
 using System.Security.Cryptography;
 using System.Threading.Tasks.Dataflow;
 using System.Xml.Linq;
@@ -95,7 +96,7 @@ namespace ManagedObjectSize
 
             if (options.DebugOutput)
             {
-                Console.WriteLine($"total: {totalSize:N0} ({obj.GetType()})");
+                state.Options.DebugWriter.WriteLine($"total: {totalSize:N0} ({obj.GetType()})");
             }
 
             return totalSize;
@@ -123,6 +124,7 @@ namespace ManagedObjectSize
                 }
 
                 var currentObject = eval.Pop();
+
                 if (currentObject == null)
                 {
                     // Cannot get the size for a "null" object.
@@ -158,7 +160,7 @@ namespace ManagedObjectSize
 
                 if (state.Options.DebugOutput)
                 {
-                    Console.WriteLine($"[{count:N0}] {(totalSize - currSize):N0} -> {totalSize:N0} ({currSize:N0}: {currentObject.GetType()})");
+                    state.Options.DebugWriter.WriteLine($"[{count:N0}] {(totalSize - currSize):N0} -> {totalSize:N0} ({currSize:N0}: {currentObject.GetType()})");
                 }
 
                 if (currentType == typeof(string))
@@ -196,59 +198,88 @@ namespace ManagedObjectSize
             var elementType = objType.GetElementType();
             if (elementType != null && !elementType.IsPointer)
             {
-                if (state.Options.ArraySampleCount != null)
+                (int sampleSize, int? populationSize) = GetSampleAndPopulateSize(state, obj, objType);
+
+                if (sampleSize == 0)
                 {
-                    int sampleCount = state.Options.ArraySampleCount.GetValueOrDefault();
+                    HandleArrayNonSampled(eval, state, obj, elementType);
+                    return;
+                }
 
-                    // If we have less (actual, see comment about elementCount below) elements than the
-                    // sample size. Use the non sampled approach.
-                    if (!HasMoreElements(obj, sampleCount))
+                // If we have less (actual, see comment about elementCount below) elements than the
+                // sample size. Use the non sampled approach.
+                if ((populationSize != null && populationSize <= sampleSize) ||
+                    !HasMoreElements(obj, sampleSize))
+                {
+                    HandleArrayNonSampled(eval, state, obj, elementType);
+                    return;
+                }
+
+                int elementCount = 0;
+                var localEval = new Stack<object>();
+                var localConsidered = new HashSet<ulong>();
+
+                foreach (object element in (System.Collections.IEnumerable)obj)
+                {
+                    if (element != null)
                     {
-                        HandleArrayNonSampled(eval, state, obj, elementType);
-                        return;
-                    }
+                        // We're only counting the elements that are actually non-null. This might
+                        // be less then the size of the array, when the array contains null elements.
+                        // On the other hand, if we could every element, we also count excess elements.
+                        // For example, the extra (unused) capacity of a List<>.
+                        // Only considering non-null elements is still correct, however, because null
+                        // elements don't contribute to the size.
+                        elementCount++;
 
-                    int elementCount = 0;
-                    var localEval = new Stack<object>();
-                    var unused = new HashSet<ulong>();
-
-                    foreach (object element in (System.Collections.IEnumerable)obj)
-                    {
-                        if (element != null)
+                        if (elementCount <= sampleSize)
                         {
-                            // We're only counting the elements that are actually non-null. This might
-                            // be less then the size of the array, when the array contains null elements.
-                            // On the other hand, if we could every element, we also count excess elements.
-                            // For example, the extra (unused) capacity of a List<>.
-                            // Only considering non-null elements is still correct, however, because null
-                            // elements don't contribute to the size.
-                            elementCount++;
-
-                            if (elementCount <= sampleCount)
+                            ulong elementAddr = (ulong)GetHeapPointer(element);
+                            if (!localConsidered.Contains(elementAddr))
                             {
-                                HandleArrayElement(localEval, unused, elementType, element);
+                                HandleArrayElement(localEval, localConsidered, elementType, element);
+                                localConsidered.Add(elementAddr);
                             }
                         }
                     }
-
-                    if (localEval.Count > 0)
-                    {
-                        double sampleSize = ProcessEvaluationStack(localEval, state, out long uniqueAddressCount);
-
-                        var sample = new ArraySample
-                        {
-                            Size = (long)((sampleSize / uniqueAddressCount) * elementCount),
-                            ElementCount = elementCount
-                        };
-
-                        eval.Push(sample);
-                    }
                 }
-                else
+
+                if (localEval.Count > 0)
                 {
-                    HandleArrayNonSampled(eval, state, obj, elementType);
+                    double sizeOfSamples = ProcessEvaluationStack(localEval, state, out _);
+
+                    var sample = new ArraySample
+                    {
+                        Size = (long)((sizeOfSamples / localConsidered.Count) * elementCount),
+                        ElementCount = elementCount
+                    };
+
+                    eval.Push(sample);
                 }
             }
+        }
+
+        private static unsafe (int SampleSize, int? PopulationSize) GetSampleAndPopulateSize(EvaluationState state, object obj, Type objType)
+        {
+            if (state.Options.ArraySampleCount != null)
+            {
+                return (state.Options.ArraySampleCount.Value, null);
+            }
+            else if (state.Options.ArraySampleConfidenceLevel != null)
+            {
+                // For size calculation we also only consider non-null elements, so here we have to do it as well.
+                // If we wouldn't, the population size would be too big and the sample size thus too small.
+                int populationSize = CountNonNullElements(obj);
+                int sampleSize = Utils.CalculateSampleCount(state.Options.ArraySampleConfidenceLevel.Value, state.Options.ArraySampleConfidenceInterval, populationSize);
+
+                if (state.Options.DebugOutput)
+                {
+                    state.Options.DebugWriter.WriteLine($"array {GetHeapPointer(obj)}/{objType}: population={populationSize:N0} sampleSize={sampleSize:N0}");
+                }
+
+                return (sampleSize, populationSize);
+            }
+
+            return (0, null);
         }
 
         private static void AddRange(HashSet<ulong> first, HashSet<ulong> second)
@@ -263,6 +294,19 @@ namespace ManagedObjectSize
         {
             public long Size { get; set; }
             public int ElementCount { get; set; }
+        }
+
+        private static int CountNonNullElements(object obj)
+        {
+            int count = 0;
+            foreach (object element in (System.Collections.IEnumerable)obj)
+            {
+                if (element != null)
+                {
+                    count++;
+                }
+            }
+            return count;
         }
 
         private static bool HasMoreElements(object obj, int max)

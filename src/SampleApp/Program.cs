@@ -57,7 +57,8 @@ Sample:    800.097.990 bytes : 00:00:01.1667667
                 () => new List<GraphNodeObject>(),
                 (i, state, local) =>
                 {
-                    var node = new GraphNodeObject { StringField = "Node#" + i.ToString().PadRight(digits) };
+                    //var node = new GraphNodeObject { StringField = "Node#" + i.ToString().PadRight(digits) };
+                    var node = new GraphNodeObject { StringField = "Node#" };
                     if (!inner)
                     {
                         node.ObjectField = CreateObjectGraph(100, true);

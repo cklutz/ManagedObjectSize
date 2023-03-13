@@ -57,29 +57,24 @@ namespace ManagedObjectSize.Tests
             static object CreateData() => Enumerable.Repeat("all of same size", 100).ToList();
         }
 
-        [DataTestMethod]
-        [DataRow(2)]
-        [DataRow(5)]
-        [DataRow(10)]
-        [DataRow(100)]
-        [DataRow(101)]
-        public void ObjectSize_ArrayReferences_Sampled(int sampleCount)
+        [TestMethod]
+        [DynamicData(nameof(GetSampleSizes), DynamicDataSourceType.Method)]
+        public void ObjectSize_ArrayReferences_Sampled(int sampleCount, int count)
         {
-            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData());
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(count));
 
             var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
-            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(), options);
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(count), options);
 
             // This *should* be true, because in our test data every element has the same size.
             // In real live scenarios, where elements may vary in size, this will not be true
             // most of the time.
             Assert.AreEqual(directSize, sampledSize);
 
-            //static object CreateData() => Enumerable.Repeat(, 100).ToList();
-            static object CreateData()
+            static object CreateData(int count)
             {
                 var result = new List<ExampleType>();
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < count; i++)
                 {
                     result.Add(new ExampleType());
                 }
@@ -87,33 +82,75 @@ namespace ManagedObjectSize.Tests
             }
         }
 
-        [DataTestMethod]
-        [DataRow(true, 2)]
-        [DataRow(true, 5)]
-        [DataRow(true, 10)]
-        [DataRow(true, 100)]
-        [DataRow(true, 101)]
-        [DataRow(false, 2)]
-        [DataRow(false, 5)]
-        [DataRow(false, 10)]
-        [DataRow(false, 100)]
-        [DataRow(false, 101)]
-        public void ObjectSize_ArrayReferenceWithStringMember_Sampled(bool equalStrings, int sampleCount)
+        [TestMethod]
+        [DynamicData(nameof(GetSampleSizes), DynamicDataSourceType.Method)]
+        public void ObjectSize_ArrayValueTypes_Sampled(int sampleCount, int count)
         {
-            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings));
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(count));
 
             var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
-            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings), options);
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(count), options);
 
             // This *should* be true, because in our test data every element has the same size.
             // In real live scenarios, where elements may vary in size, this will not be true
             // most of the time.
             Assert.AreEqual(directSize, sampledSize);
 
-            static object CreateData(bool equal)
+            static object CreateData(int count) => Enumerable.Repeat(42, count).ToList();
+        }
+
+        [TestMethod]
+        [DynamicData(nameof(GetSampleSizes), DynamicDataSourceType.Method)]
+        public void ObjectSize_ArrayReferenceWithValueTypeMember_Sampled(int sampleCount, int count)
+        {
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(count));
+
+            var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(count), options);
+
+            // This *should* be true, because in our test data every element has the same size.
+            // In real live scenarios, where elements may vary in size, this will not be true
+            // most of the time.
+            Assert.AreEqual(directSize, sampledSize);
+
+            static object CreateData(int count)
+            {
+                var result = new List<ExampleValue>();
+                for (int i = 0; i < count; i++)
+                {
+                    result.Add(new ExampleValue());
+                }
+                return result;
+            }
+        }
+
+        [TestMethod]
+        [DynamicData(nameof(GetWithStringSampleSizes), DynamicDataSourceType.Method)]
+        public void ObjectSize_ArrayReferenceWithStringMember_Sampled(bool equalStrings, int sampleCount, int count)
+        {
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings, count));
+
+            var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings, count), options);
+
+            if (equalStrings)
+            {
+                // With equal strings the sampling will overestimate the amount of memory used, since
+                // it doesn't know that in the (not seen) elements some objects are all the same.
+                Assert.IsTrue(directSize <= sampledSize);
+            }
+            else
+            {
+                // This *should* be true, because in our test data every element has the same size.
+                // In real live scenarios, where elements may vary in size, this will not be true
+                // most of the time.
+                Assert.AreEqual(directSize, sampledSize);
+            }
+
+            static object CreateData(bool equal, int count)
             {
                 var result = new List<ExampleHolder>();
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < count; i++)
                 {
                     var obj = new ExampleHolder();
                     obj.StringValue = equal ? "ccccc" : Guid.NewGuid().ToString();
@@ -123,33 +160,33 @@ namespace ManagedObjectSize.Tests
             }
         }
 
-        [DataTestMethod]
-        [DataRow(true, 2)]
-        [DataRow(true, 5)]
-        [DataRow(true, 10)]
-        [DataRow(true, 100)]
-        [DataRow(true, 101)]
-        [DataRow(false, 2)]
-        [DataRow(false, 5)]
-        [DataRow(false, 10)]
-        [DataRow(false, 100)]
-        [DataRow(false, 101)]
-        public void ObjectSize_ArrayStrings_Sampled(bool equalStrings, int sampleCount)
+        [TestMethod]
+        [DynamicData(nameof(GetWithStringSampleSizes), DynamicDataSourceType.Method)]
+        public void ObjectSize_ArrayStrings_Sampled(bool equalStrings, int sampleCount, int count)
         {
-            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings));
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings, count));
 
             var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
-            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings), options);
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings, count), options);
 
-            // This *should* be true, because in our test data every element has the same size.
-            // In real live scenarios, where elements may vary in size, this will not be true
-            // most of the time.
-            Assert.AreEqual(directSize, sampledSize);
+            if (equalStrings)
+            {
+                // With equal strings the sampling will overestimate the amount of memory used, since
+                // it doesn't know that in the (not seen) elements some objects are all the same.
+                Assert.IsTrue(directSize <= sampledSize);
+            }
+            else
+            {
+                // This *should* be true, because in our test data every element has the same size.
+                // In real live scenarios, where elements may vary in size, this will not be true
+                // most of the time.
+                Assert.AreEqual(directSize, sampledSize);
+            }
 
-            static object CreateData(bool equal)
+            static object CreateData(bool equal, int count)
             {
                 var result = new List<string>();
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < count; i++)
                 {
                     result.Add(equal ? "ccccc" : Guid.NewGuid().ToString());
                 }
@@ -157,25 +194,37 @@ namespace ManagedObjectSize.Tests
             }
         }
 
-        [DataTestMethod]
-        [DataRow(2)]
-        [DataRow(5)]
-        [DataRow(10)]
-        [DataRow(100)]
-        [DataRow(101)]
-        public void ObjectSize_ArrayValueTypes_Sampled(int sampleCount)
+        [TestMethod]
+        [DynamicData(nameof(GetWithStringSampleConfidences), DynamicDataSourceType.Method)]
+        public void ObjectSize_ArrayStrings_SampledWithConfidence(bool equalStrings, double confidenceLevel, int count)
         {
-            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData());
+            long directSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings, count));
+            var options = new ObjectSizeOptions { ArraySampleConfidenceLevel = confidenceLevel };
+            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(equalStrings, count), options);
 
-            var options = new ObjectSizeOptions { ArraySampleCount = sampleCount };
-            long sampledSize = ObjectSize.GetObjectInclusiveSize(CreateData(), options);
+            if (equalStrings)
+            {
+                // With equal strings the sampling will overestimate the amount of memory used, since
+                // it doesn't know that in the (not seen) elements some objects are all the same.
+                Assert.IsTrue(directSize <= sampledSize);
+            }
+            else
+            {
+                // This *should* be true, because in our test data every element has the same size.
+                // In real live scenarios, where elements may vary in size, this will not be true
+                // most of the time.
+                Assert.AreEqual(directSize, sampledSize);
+            }
 
-            // This *should* be true, because in our test data every element has the same size.
-            // In real live scenarios, where elements may vary in size, this will not be true
-            // most of the time.
-            Assert.AreEqual(directSize, sampledSize);
-
-            static object CreateData() => Enumerable.Repeat(42, 100).ToList();
+            static object CreateData(bool equal, int count)
+            {
+                var result = new List<string>();
+                for (int i = 0; i < count; i++)
+                {
+                    result.Add(equal ? "ccccc" : Guid.NewGuid().ToString());
+                }
+                return result;
+            }
         }
 
         // We could also use [DynamicData] to conduct the test of different objects/types, which would
@@ -210,10 +259,12 @@ namespace ManagedObjectSize.Tests
             selfRef.Ref.Ref = selfRef;
             var withPointer = new TypeWithPointer { Ptr = (void*)ObjectSize.GetHeapPointer(@string) };
 
+            var stringArray = new string[] { "ccccc", "ccccc", "ccccc", "ccccc", "ccccc", "ccccc" };
             var valueArray = new int[] { 1, 2, 3 };
             var valueRefArray = new[] { new ValueTypeWithRef("1"), new ValueTypeWithRef("1") };
             var refArray = new[] { new ExampleType(), new ExampleType() };
-            var refWithStringArray = new[] { new TypeWithStringRef("1"), new TypeWithStringRef("2") };
+            var refWithDifferentStringsArray = new[] { new TypeWithStringRef("aaaaa"), new TypeWithStringRef("aaaaa") };
+            var refWithSameStringsArray = new[] { new TypeWithStringRef("aaaaa"), new TypeWithStringRef("bbbbb") };
             var pointerArray = new void*[] { (void*)ObjectSize.GetHeapPointer(@string), (void*)ObjectSize.GetHeapPointer(empty) };
             var emptyValueArray = new int[] { };
             var emptyRefArray = new Empty[] { };
@@ -226,7 +277,7 @@ namespace ManagedObjectSize.Tests
 
             var options = new ObjectSizeOptions();
             options.UseRtHelpers = useRtHelpers;
-            options.DebugOutput = true;
+            //options.DebugOutput = true;
 
             GetSize(options, empty, data);
             GetSize(options, valueEmpty, data);
@@ -241,10 +292,12 @@ namespace ManagedObjectSize.Tests
             GetSize(options, selfRef, data);
             GetSize(options, withPointer, data);
 
+            GetSize(options, stringArray, data);
             GetSize(options, valueArray, data);
             GetSize(options, valueRefArray, data);
             GetSize(options, refArray, data);
-            GetSize(options, refWithStringArray, data);
+            GetSize(options, refWithDifferentStringsArray, data);
+            GetSize(options, refWithSameStringsArray, data);
             GetSize(options, pointerArray, data);
             GetSize(options, emptyValueArray, data);
             GetSize(options, emptyValueRefArray, data);
@@ -327,6 +380,44 @@ namespace ManagedObjectSize.Tests
             }
 
             return (count, totalSize, input.Size);
+        }
+
+        private static readonly int[] s_sampleSizesFor100 = new[] { 2, 5, 10, 50, 75, 99, 100, 101 };
+
+        private static IEnumerable<object[]> GetWithStringSampleSizes()
+        {
+            foreach (var size in s_sampleSizesFor100)
+            {
+                yield return new object[] { true, size, 100 };
+            }
+
+            foreach (var size in s_sampleSizesFor100)
+            {
+                yield return new object[] { false, size, 100 };
+            }
+        }
+
+        private static IEnumerable<object[]> GetSampleSizes()
+        {
+            foreach (var size in s_sampleSizesFor100)
+            {
+                yield return new object[] { size, 100 };
+            }
+        }
+
+        private static readonly double[] s_sampleConfidences = new[] { 0.9, 0.95, 0.99 };
+
+        private static IEnumerable<object[]> GetWithStringSampleConfidences()
+        {
+            foreach (var confidenceLevel in s_sampleConfidences)
+            {
+                yield return new object[] { true, confidenceLevel, 10_000 };
+            }
+
+            foreach (var confidenceLevel in s_sampleConfidences)
+            {
+                yield return new object[] { false, confidenceLevel, 10_000 };
+            }
         }
 
         private class Empty { }
