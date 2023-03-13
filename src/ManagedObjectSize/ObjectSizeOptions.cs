@@ -103,6 +103,20 @@ namespace ManagedObjectSize
             }
         }
 
+        /// <summary>
+        /// Gets or sets a value that determines the sample size (<see cref="ArraySampleCount"/>) based on a given
+        /// confidence level.
+        /// If the array contains less elements than the calculated sample size, the array is processed as if sampling would
+        /// not have been enabled. Also see the <i>remarks</i> section.
+        /// </summary>
+        /// <remarks>
+        /// Sampling will contain too high estimates, when the elements in the array share a lot of objects.
+        /// For example, if the array (elements) contain a lot of strings that are all the same (address).
+        /// This can be circumvented (a bit) by choosing a sample size that is not too small, compared to the
+        /// actual data. However, this quickly questions the usefulness of sampling in the first place. You
+        /// should use sampling only if you can live with number that are higher than the actual usage, or
+        /// when you know your data (to contain many unique objects).
+        /// </remarks>
         public double? ArraySampleConfidenceLevel
         {
             get => m_arraySampleConfidenceLevel;

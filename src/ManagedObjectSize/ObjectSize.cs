@@ -208,6 +208,8 @@ namespace ManagedObjectSize
 
                 // If we have less (actual, see comment about elementCount below) elements than the
                 // sample size. Use the non sampled approach.
+                // PopulationSize has already been determined, if confidence level based sampling is
+                // configured. In this case, reuse the value.
                 if ((populationSize != null && populationSize <= sampleSize) ||
                     !HasMoreElements(obj, sampleSize))
                 {
@@ -216,6 +218,9 @@ namespace ManagedObjectSize
                 }
 
                 int elementCount = 0;
+
+                // TODO: Should these be from a pool? Measure if cost is too high allocating if we have
+                // a "large" number of arrays to sample.
                 var localEval = new Stack<object>();
                 var localConsidered = new HashSet<ulong>();
 

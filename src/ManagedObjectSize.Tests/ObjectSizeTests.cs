@@ -270,6 +270,18 @@ namespace ManagedObjectSize.Tests
             var emptyRefArray = new Empty[] { };
             var emptyValueRefArray = new ValueTypeWithRef[] { };
             var emptyPointerArray = new void*[] { };
+            var jaggedArray = new int[10][];
+            for (int i = 0; i < 10; i++)
+            {
+                jaggedArray[i] = new[] { 1, 2, 3, 4, 5 };
+            }
+            var multiDimensionalArray = new int[,]
+            {
+                { 1, 2, 3, 4, 5 },
+                { 1, 2, 3, 4, 5 },
+                { 1, 2, 3, 4, 5 },
+                { 1, 2, 3, 4, 5 }
+            };
 
             string internedString1 = String.Intern("INTERNED");
             string internedString2 = String.Intern("INTERNED");
@@ -303,6 +315,8 @@ namespace ManagedObjectSize.Tests
             GetSize(options, emptyValueRefArray, data);
             GetSize(options, emptyRefArray, data);
             GetSize(options, emptyPointerArray, data);
+            GetSize(options, jaggedArray, data);
+            GetSize(options, multiDimensionalArray, data);
 
             GetSize(options, internedStrings, data);
 
