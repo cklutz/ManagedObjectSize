@@ -11,7 +11,7 @@ namespace ManagedObjectSize
         /// <param name="confidenceInterval"></param>
         /// <param name="populationSize"></param>
         /// <returns></returns>
-        internal static int CalculateSampleCount(double confidenceLevel, int confidenceInterval, int populationSize)
+        public static int CalculateSampleCount(double confidenceLevel, int confidenceInterval, int populationSize)
         {
             if (populationSize <= 0)
             {

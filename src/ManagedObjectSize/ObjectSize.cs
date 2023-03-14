@@ -1,11 +1,7 @@
-﻿using System.Diagnostics;
+﻿//#define FEATURE_STATISTICS
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ObjectiveC;
-using System.Security.Cryptography;
-using System.Threading.Tasks.Dataflow;
-using System.Xml.Linq;
 
 namespace ManagedObjectSize
 {
@@ -92,7 +88,18 @@ namespace ManagedObjectSize
             };
 
             eval.Push(obj);
+
+#if FEATURE_STATISTICS
+            state.StartStatistics();
+            state.UpdateEval(eval);
+#endif
+
             long totalSize = ProcessEvaluationStack(eval, state, out count);
+
+#if FEATURE_STATISTICS
+            state.StopStatistics();
+            state.DumpStatistics(totalSize);
+#endif
 
             if (options.DebugOutput)
             {
@@ -107,6 +114,43 @@ namespace ManagedObjectSize
             public long StopTime { get; set; }
             public ObjectSizeOptions Options { get; set; } = null!;
             public HashSet<ulong> Considered { get; set; } = null!;
+
+#if FEATURE_STATISTICS
+            private long m_started;
+            private long m_complete;
+            private int m_maxConsidered;
+            private int m_sampleMaxConsidered;
+            private int m_maxEval;
+            private int m_sampleMaxEval;
+            private int m_sampled;
+            private int m_notSampled;
+            private int m_arrays;
+
+            public void DumpStatistics(long totalSize)
+            {
+#pragma warning disable HAA0601 // Value type to reference type conversion causing boxing allocation
+                Options.DebugWriter.WriteLine("STATISTICS");
+                Options.DebugWriter.WriteLine($"  enabled options        : {Options.GetEnabledString()}");
+                Options.DebugWriter.WriteLine($"  elapsed                : {new TimeSpan(m_complete - m_started)}");
+                Options.DebugWriter.WriteLine($"  total size             : {totalSize.ToString("N0")} bytes");
+                Options.DebugWriter.WriteLine($"  max seen/evaluated     : {m_maxConsidered:N0}/{m_maxEval:N0}");
+                Options.DebugWriter.WriteLine($"  arrays                 : {m_arrays:N0}");
+                Options.DebugWriter.WriteLine($"    not sampled          : {m_notSampled:N0}");
+                Options.DebugWriter.WriteLine($"    sampled              : {m_sampled:N0}");
+                Options.DebugWriter.WriteLine($"      max seen/evaluated : {m_sampleMaxConsidered:N0}/{m_sampleMaxEval:N0}");
+#pragma warning restore HAA0601 // Value type to reference type conversion causing boxing allocation
+            }
+
+            public void StartStatistics() => m_started = System.Diagnostics.Stopwatch.GetTimestamp();
+            public void StopStatistics() => m_complete = System.Diagnostics.Stopwatch.GetTimestamp();
+            public void UpdateConsidered() => m_maxConsidered = Math.Max(Considered.Count, m_maxConsidered);
+            public void UpdateSampleConsidered(HashSet<ulong> considered) => m_sampleMaxConsidered = Math.Max(considered.Count, m_sampleMaxConsidered);
+            public void UpdateEval(Stack<object> eval) => m_maxEval = Math.Max(eval.Count, m_maxEval);
+            public void UpdateSampleEval(Stack<object> eval) => m_sampleMaxEval = Math.Max(eval.Count, m_sampleMaxEval);
+            public void UpdateSampled() => m_sampled++;
+            public void UpdateNotSampled() => m_notSampled++;
+            public void UpdateArrays() => m_arrays++;
+#endif
         }
 
         private static unsafe long ProcessEvaluationStack(Stack<object> eval, EvaluationState state, out long count)
@@ -137,6 +181,10 @@ namespace ManagedObjectSize
                     // Already seen this object.
                     continue;
                 }
+
+#if FEATURE_STATISTICS
+                state.UpdateConsidered();
+#endif
 
                 var currentType = currentObject.GetType();
                 if (currentType == typeof(Pointer) || currentType.IsPointer)
@@ -198,93 +246,122 @@ namespace ManagedObjectSize
             var elementType = objType.GetElementType();
             if (elementType != null && !elementType.IsPointer)
             {
-                (int sampleSize, int? populationSize) = GetSampleAndPopulateSize(state, obj, objType);
+#if FEATURE_STATISTICS
+                state.UpdateArrays();
+#endif
+                (int sampleSize, int? populationSize, bool always) = GetSampleAndPopulateSize(state, obj, objType);
 
-                if (sampleSize == 0)
+                // Only sample if:
+                // - the "always" flag has not been set in options
+                // - we have determined an actual sample size
+                // - if the total number of elements in the array is not less than the sample size
+                if (!always && (
+                        sampleSize == 0 ||
+                        (populationSize != null && populationSize <= sampleSize) ||
+                        HasLessElements(obj, sampleSize, elementType))
+                    )
                 {
                     HandleArrayNonSampled(eval, state, obj, elementType);
-                    return;
                 }
-
-                // If we have less (actual, see comment about elementCount below) elements than the
-                // sample size. Use the non sampled approach.
-                // PopulationSize has already been determined, if confidence level based sampling is
-                // configured. In this case, reuse the value.
-                if ((populationSize != null && populationSize <= sampleSize) ||
-                    !HasMoreElements(obj, sampleSize))
+                else
                 {
-                    HandleArrayNonSampled(eval, state, obj, elementType);
-                    return;
-                }
-
-                int elementCount = 0;
-
-                // TODO: Should these be from a pool? Measure if cost is too high allocating if we have
-                // a "large" number of arrays to sample.
-                var localEval = new Stack<object>();
-                var localConsidered = new HashSet<ulong>();
-
-                foreach (object element in (System.Collections.IEnumerable)obj)
-                {
-                    if (element != null)
-                    {
-                        // We're only counting the elements that are actually non-null. This might
-                        // be less then the size of the array, when the array contains null elements.
-                        // On the other hand, if we could every element, we also count excess elements.
-                        // For example, the extra (unused) capacity of a List<>.
-                        // Only considering non-null elements is still correct, however, because null
-                        // elements don't contribute to the size.
-                        elementCount++;
-
-                        if (elementCount <= sampleSize)
-                        {
-                            ulong elementAddr = (ulong)GetHeapPointer(element);
-                            if (!localConsidered.Contains(elementAddr))
-                            {
-                                HandleArrayElement(localEval, localConsidered, elementType, element);
-                                localConsidered.Add(elementAddr);
-                            }
-                        }
-                    }
-                }
-
-                if (localEval.Count > 0)
-                {
-                    double sizeOfSamples = ProcessEvaluationStack(localEval, state, out _);
-
-                    var sample = new ArraySample
-                    {
-                        Size = (long)((sizeOfSamples / localConsidered.Count) * elementCount),
-                        ElementCount = elementCount
-                    };
-
-                    eval.Push(sample);
+                    HandleArraySampled(eval, state, obj, elementType, sampleSize);
                 }
             }
         }
 
-        private static unsafe (int SampleSize, int? PopulationSize) GetSampleAndPopulateSize(EvaluationState state, object obj, Type objType)
+        private static unsafe void HandleArraySampled(Stack<object> eval, EvaluationState state, object obj, Type? elementType, int sampleSize)
         {
-            if (state.Options.ArraySampleCount != null)
+#if FEATURE_STATISTICS
+            state.UpdateSampled();
+#endif
+
+            int elementCount = 0;
+
+            // TODO: Should these be from a pool? Measure if cost is too high allocating if we have
+            // a "large" number of arrays to sample.
+            var localEval = new Stack<object>();
+            var localConsidered = new HashSet<ulong>();
+
+            foreach (object element in (System.Collections.IEnumerable)obj)
             {
-                return (state.Options.ArraySampleCount.Value, null);
+                if (ShouldCountElement(element, elementType))
+                {
+                    // We're only counting the elements that are actually non-null. This might
+                    // be less then the size of the array, when the array contains null elements.
+                    // On the other hand, if we could every element, we also count excess elements.
+                    // For example, the extra (unused) capacity of a List<>.
+                    // Only considering non-null elements is still correct, however, because null
+                    // elements don't contribute to the size.
+                    elementCount++;
+
+                    if (elementCount <= sampleSize)
+                    {
+                        ulong elementAddr = (ulong)GetHeapPointer(element);
+                        if (!localConsidered.Contains(elementAddr))
+                        {
+                            HandleArrayElement(localEval, localConsidered, elementType, element);
+                            localConsidered.Add(elementAddr);
+#if FEATURE_STATISTICS
+                                state.UpdateSampleConsidered(localConsidered);
+                                state.UpdateSampleEval(localEval);
+#endif
+                        }
+                    }
+                }
+            }
+
+            if (localEval.Count > 0)
+            {
+                double sizeOfSamples = ProcessEvaluationStack(localEval, state, out _);
+
+                var sample = new ArraySample
+                {
+                    Size = (long)((sizeOfSamples / localConsidered.Count) * elementCount),
+                    ElementCount = elementCount
+                };
+
+                eval.Push(sample);
+#if FEATURE_STATISTICS
+                    state.UpdateEval(eval);
+#endif
+            }
+        }
+
+        private static unsafe (int SampleSize, int? PopulationSize, bool Always) GetSampleAndPopulateSize(EvaluationState state, object obj, Type elementType)
+        {
+            if (state.Options.AlwaysUseArraySampleAlgorithm)
+            {
+                int populationSize = CountNonNullElements(obj, elementType);
+                return (populationSize, populationSize, true);
+            }
+            else if (state.Options.ArraySampleCount != null)
+            {
+                int sampleSize = state.Options.ArraySampleCount.Value;
+
+                if (state.Options.DebugOutput)
+                {
+                    state.Options.DebugWriter.WriteLine($"array {GetHeapPointer(obj)}/{elementType}[]: sampleSize={sampleSize:N0}");
+                }
+
+                return (sampleSize, null, false);
             }
             else if (state.Options.ArraySampleConfidenceLevel != null)
             {
                 // For size calculation we also only consider non-null elements, so here we have to do it as well.
                 // If we wouldn't, the population size would be too big and the sample size thus too small.
-                int populationSize = CountNonNullElements(obj);
+                int populationSize = CountNonNullElements(obj, elementType);
                 int sampleSize = Utils.CalculateSampleCount(state.Options.ArraySampleConfidenceLevel.Value, state.Options.ArraySampleConfidenceInterval, populationSize);
 
                 if (state.Options.DebugOutput)
                 {
-                    state.Options.DebugWriter.WriteLine($"array {GetHeapPointer(obj)}/{objType}: population={populationSize:N0} sampleSize={sampleSize:N0}");
+                    state.Options.DebugWriter.WriteLine($"array {GetHeapPointer(obj)}/{elementType}[]: population={populationSize:N0} sampleSize={sampleSize:N0}");
                 }
 
-                return (sampleSize, populationSize);
+                return (sampleSize, populationSize, false);
             }
 
-            return (0, null);
+            return (0, null, false);
         }
 
         private static void AddRange(HashSet<ulong> first, HashSet<ulong> second)
@@ -301,12 +378,20 @@ namespace ManagedObjectSize
             public int ElementCount { get; set; }
         }
 
-        private static int CountNonNullElements(object obj)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ShouldCountElement(object element, Type elementType) => elementType.IsValueType || element != null;
+
+        private static int CountNonNullElements(object obj, Type elementType)
         {
+            if (elementType.IsValueType)
+            {
+                return ((Array)obj).Length;
+            }
+
             int count = 0;
             foreach (object element in (System.Collections.IEnumerable)obj)
             {
-                if (element != null)
+                if (ShouldCountElement(element, elementType))
                 {
                     count++;
                 }
@@ -314,28 +399,32 @@ namespace ManagedObjectSize
             return count;
         }
 
-        private static bool HasMoreElements(object obj, int max)
+        private static bool HasLessElements(object obj, int max, Type elementType)
         {
             int count = 0;
             foreach (object element in (System.Collections.IEnumerable)obj)
             {
-                if (element != null)
+                if (ShouldCountElement(element, elementType))
                 {
                     count++;
-                    if (count > max)
+                    if (count >= max)
                     {
-                        return true;
+                        return false;
                     }
                 }
             }
-            return false;
+            return true;
         }
 
         private static unsafe void HandleArrayNonSampled(Stack<object> eval, EvaluationState state, object obj, Type elementType)
         {
+#if FEATURE_STATISTICS
+            state.UpdateNotSampled();
+#endif
+
             foreach (object element in (System.Collections.IEnumerable)obj)
             {
-                if (element != null)
+                if (ShouldCountElement(element, elementType))
                 {
                     HandleArrayElement(eval, state.Considered, elementType, element);
                 }

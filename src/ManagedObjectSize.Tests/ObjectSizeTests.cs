@@ -96,7 +96,15 @@ namespace ManagedObjectSize.Tests
             // most of the time.
             Assert.AreEqual(directSize, sampledSize);
 
-            static object CreateData(int count) => Enumerable.Repeat(42, count).ToList();
+            static object CreateData(int count)
+            {
+                var result = new List<int>();
+                for (int i = 0; i < count; i++)
+                {
+                    result.Add(i);
+                }
+                return result;
+            }
         }
 
         [TestMethod]
@@ -415,7 +423,7 @@ namespace ManagedObjectSize.Tests
         {
             foreach (var size in s_sampleSizesFor100)
             {
-                yield return new object[] { size, 100 };
+                yield return new object[] { size, 123 };
             }
         }
 

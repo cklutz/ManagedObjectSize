@@ -1,4 +1,5 @@
 ﻿
+using System.Text;
 using System.Threading;
 
 namespace ManagedObjectSize
@@ -13,6 +14,7 @@ namespace ManagedObjectSize
         private TextWriter m_debugWriter = Console.Out;
         private double? m_arraySampleConfidenceLevel;
         private int m_arraySampleConfidenceInterval = 5;
+        private bool m_alwaysUseArraySampleAlgorithm;
 
         public CancellationToken CancellationToken
         {
@@ -71,6 +73,20 @@ namespace ManagedObjectSize
         }
 
         /// <summary>
+        /// <b>EXPERIMENTAL/INTERNAL USE ONLY</b> Gets or sets a value that causes - the potentially more expensive -
+        /// sample algorithm to be used for every array, regardless of the other settings concerning sampling.
+        /// </summary>
+        public bool AlwaysUseArraySampleAlgorithm
+        {
+            get => m_alwaysUseArraySampleAlgorithm;
+            set
+            {
+                CheckReadOnly();
+                m_alwaysUseArraySampleAlgorithm = value;
+            }
+        }
+
+        /// <summary>
         /// Gets or sets a value that describes how many elements of an array should be checked at a maximum.
         /// If the array contains less elements than this value, the array is processed as if sampling would
         /// not have been enabled. Also see the <i>remarks</i> section.
@@ -104,7 +120,7 @@ namespace ManagedObjectSize
         }
 
         /// <summary>
-        /// Gets or sets a value that determines the sample size (<see cref="ArraySampleCount"/>) based on a given
+        /// <b>EXPERIMENTAL</b> Gets or sets a value that determines the sample size (<see cref="ArraySampleCount"/>) based on a given
         /// confidence level.
         /// If the array contains less elements than the calculated sample size, the array is processed as if sampling would
         /// not have been enabled. Also see the <i>remarks</i> section.
@@ -133,6 +149,9 @@ namespace ManagedObjectSize
             }
         }
 
+        /// <summary>
+        /// <b>EXPERIMENTAL</b> (see <see cref="ArraySampleConfidenceInterval"/>).
+        /// </summary>
         public int ArraySampleConfidenceInterval
         {
             get => m_arraySampleConfidenceInterval;
@@ -168,8 +187,9 @@ namespace ManagedObjectSize
                 DebugOutput = m_debugOutput,
                 UseRtHelpers = m_useRtHelpers,
                 ArraySampleCount = m_arraySampleCount,
-                ArraySampleConfidenceInterval = m_arraySampleConfidenceInterval,
                 ArraySampleConfidenceLevel = m_arraySampleConfidenceLevel,
+                ArraySampleConfidenceInterval = m_arraySampleConfidenceInterval,
+                AlwaysUseArraySampleAlgorithm = m_alwaysUseArraySampleAlgorithm,
                 Timeout = m_timeout,
                 CancellationToken = m_cancellationToken,
                 DebugWriter = m_debugWriter,
@@ -184,6 +204,74 @@ namespace ManagedObjectSize
             {
                 throw new InvalidOperationException("Cannot change a read only instance");
             }
+        }
+
+        public string GetEnabledString()
+        {
+            var sb = new StringBuilder();
+            if (UseRtHelpers)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(UseRtHelpers)).Append("=true");
+            }
+            if (ArraySampleCount != null)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(ArraySampleCount)).Append('=').Append(ArraySampleCount.Value.ToString("N0"));
+            }
+            if (ArraySampleConfidenceLevel != null)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(ArraySampleConfidenceLevel)).Append('=').Append(ArraySampleConfidenceLevel.Value);
+                sb.Append(' ');
+                sb.Append(nameof(ArraySampleConfidenceInterval)).Append('=').Append(ArraySampleConfidenceInterval);
+            }
+            if (AlwaysUseArraySampleAlgorithm)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(AlwaysUseArraySampleAlgorithm)).Append("=true");
+            }
+            if (Timeout != null)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(Timeout)).Append('=').Append(Timeout.Value);
+            }
+            if (DebugOutput)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(DebugOutput)).Append("=true");
+            }
+
+            if (sb.Length == 0)
+            {
+                sb.Append("(default)");
+            }
+
+            return sb.ToString();
         }
     }
 }
