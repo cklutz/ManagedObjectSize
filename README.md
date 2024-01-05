@@ -3,9 +3,11 @@
 **Note:** _This library depends on internals of the CoreCLR. Currently tested with version 6.0 and 7.0, there is no guarantee it will work with future versions. You would be ill adviced, would you use this functionality for anything else than diagnostics or other, non vital to the core of your application, features._
 
 * [![Windows CoreCLR 6.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-6.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-6.0.yml)
-* [![Windows CoreCLR 6.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-7.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-7.0.yml)
+* [![Windows CoreCLR 7.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-7.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-7.0.yml)
+* [![Windows CoreCLR 8.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-8.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/windows-coreclr-8.0.yml)
 * [![Ubuntu CoreCLR 6.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-6.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-6.0.yml)
-* [![Ubuntu CoreCLR 6.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-7.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-7.0.yml)
+* [![Ubuntu CoreCLR 7.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-7.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-7.0.yml)
+* [![Ubuntu CoreCLR 8.0](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-8.0.yml/badge.svg)](https://github.com/cklutz/ManagedObjectSize/actions/workflows/ubuntu-coreclr-8.0.yml)
 
 
 
