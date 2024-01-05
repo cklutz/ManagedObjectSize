@@ -7,6 +7,7 @@ namespace ManagedObjectSize
     public class ObjectSizeOptions
     {
         private bool m_debugOutput;
+        private bool m_collectStatistics;
         private bool m_useRtHelpers;
         private int? m_arraySampleCount;
         private TimeSpan? m_timeout;
@@ -59,6 +60,16 @@ namespace ManagedObjectSize
             {
                 CheckReadOnly();
                 m_debugOutput = value;
+            }
+        }
+
+        public bool CollectStatistics
+        {
+            get => m_collectStatistics;
+            set
+            {
+                CheckReadOnly();
+                m_collectStatistics = value;
             }
         }
 

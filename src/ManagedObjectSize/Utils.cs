@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace ManagedObjectSize
 {
-    public class Utils
+    public static class Utils
     {
         /// <summary>
         /// Returns a pointer to the object on the managed heap. The resulting address is not fixed,

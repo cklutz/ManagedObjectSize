@@ -1,5 +1,4 @@
-﻿//#define FEATURE_STATISTICS
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -81,22 +80,23 @@ namespace ManagedObjectSize
             options = (options ?? new()).GetReadOnly();
 
             var eval = new Stack<object>();
-            var state = new EvaluationState
-            {
-                Considered = new(ReferenceEqualityComparer.Instance),
-                StopTime = options.GetStopTime(Environment.TickCount64),
-                Options = options
-            };
+            var state = new EvaluationState(options);
 
             eval.Push(obj);
 
-            state.StartStatistics();
-            state.UpdateEval(eval);
+            if (state.Statistics != null)
+            {
+                state.Statistics.Start();
+                state.Statistics.UpdateEval(eval);
+            }
 
-            long totalSize = ProcessEvaluationStack(eval, state, out count);
+            long totalSize = ProcessEvaluationStack(eval, ref state, out count);
 
-            state.StopStatistics();
-            state.DumpStatistics(totalSize);
+            if (state.Statistics != null)
+            {
+                state.Statistics.Stop();
+                state.Statistics.Dump(totalSize);
+            }
 
             if (options.DebugOutput)
             {
@@ -106,14 +106,11 @@ namespace ManagedObjectSize
             return totalSize;
         }
 
-        private class EvaluationState
+        private class Statistics
         {
-            public long StopTime { get; set; }
-            public ObjectSizeOptions Options { get; set; } = null!;
-            public HashSet<object> Considered { get; set; } = null!;
-
             private long m_started;
             private long m_completed;
+            private int m_considered;
             private int m_maxConsidered;
             private int m_sampleMaxConsidered;
             private int m_maxEval;
@@ -121,42 +118,54 @@ namespace ManagedObjectSize
             private int m_sampled;
             private int m_notSampled;
             private int m_arrays;
+            private readonly ObjectSizeOptions m_options;
 
-            [Conditional("FEATURE_STATISTICS")]
-            public void DumpStatistics(long totalSize)
+            public Statistics(ObjectSizeOptions options)
             {
-                Options.DebugWriter.WriteLine("STATISTICS");
-                Options.DebugWriter.WriteLine($"  enabled options        : {Options.GetEnabledString()}");
-                Options.DebugWriter.WriteLine($"  elapsed                : {new TimeSpan(m_completed - m_started)}");
-                Options.DebugWriter.WriteLine($"  total size             : {totalSize:N0} bytes");
-                Options.DebugWriter.WriteLine($"  max seen/evaluated     : {m_maxConsidered:N0}/{m_maxEval:N0}");
-                Options.DebugWriter.WriteLine($"  arrays                 : {m_arrays:N0}");
-                Options.DebugWriter.WriteLine($"    not sampled          : {m_notSampled:N0}");
-                Options.DebugWriter.WriteLine($"    sampled              : {m_sampled:N0}");
-                Options.DebugWriter.WriteLine($"      max seen/evaluated : {m_sampleMaxConsidered:N0}/{m_sampleMaxEval:N0}");
+                m_options = options;
             }
 
-            [Conditional("FEATURE_STATISTICS")]
-            public void StartStatistics() => m_started = Stopwatch.GetTimestamp();
-            [Conditional("FEATURE_STATISTICS")]
-            public void StopStatistics() => m_completed = Stopwatch.GetTimestamp();
-            [Conditional("FEATURE_STATISTICS")]
-            public void UpdateConsidered() => m_maxConsidered = Math.Max(Considered.Count, m_maxConsidered);
-            [Conditional("FEATURE_STATISTICS")]
+            public void Start() => m_started = Stopwatch.GetTimestamp();
+            public void Stop() => m_completed = Stopwatch.GetTimestamp();
+            public void UpdateConsidered() => m_maxConsidered = Math.Max(++m_considered, m_maxConsidered);
             public void UpdateSampleConsidered(HashSet<object> considered) => m_sampleMaxConsidered = Math.Max(considered.Count, m_sampleMaxConsidered);
-            [Conditional("FEATURE_STATISTICS")]
             public void UpdateEval(Stack<object> eval) => m_maxEval = Math.Max(eval.Count, m_maxEval);
-            [Conditional("FEATURE_STATISTICS")]
             public void UpdateSampleEval(Stack<object> eval) => m_sampleMaxEval = Math.Max(eval.Count, m_sampleMaxEval);
-            [Conditional("FEATURE_STATISTICS")]
             public void UpdateSampled() => m_sampled++;
-            [Conditional("FEATURE_STATISTICS")]
             public void UpdateNotSampled() => m_notSampled++;
-            [Conditional("FEATURE_STATISTICS")]
             public void UpdateArrays() => m_arrays++;
+
+            public void Dump(long totalSize)
+            {
+                m_options.DebugWriter.WriteLine("STATISTICS");
+                m_options.DebugWriter.WriteLine($"  enabled options        : {m_options.GetEnabledString()}");
+                m_options.DebugWriter.WriteLine($"  elapsed                : {new TimeSpan(m_completed - m_started)}");
+                m_options.DebugWriter.WriteLine($"  total size             : {totalSize:N0} bytes");
+                m_options.DebugWriter.WriteLine($"  max seen/evaluated     : {m_maxConsidered:N0}/{m_maxEval:N0}");
+                m_options.DebugWriter.WriteLine($"  arrays                 : {m_arrays:N0}");
+                m_options.DebugWriter.WriteLine($"    not sampled          : {m_notSampled:N0}");
+                m_options.DebugWriter.WriteLine($"    sampled              : {m_sampled:N0}");
+                m_options.DebugWriter.WriteLine($"      max seen/evaluated : {m_sampleMaxConsidered:N0}/{m_sampleMaxEval:N0}");
+            }
         }
 
-        private static unsafe long ProcessEvaluationStack(Stack<object> eval, EvaluationState state, out long count)
+        private readonly struct EvaluationState
+        {
+            public EvaluationState(ObjectSizeOptions options)
+            {
+                Options = options ?? throw new ArgumentNullException(nameof(options));
+                StopTime = options.GetStopTime(Environment.TickCount64);
+                Considered = new HashSet<object>(ReferenceEqualityComparer.Instance);
+                Statistics = options.CollectStatistics ? new(options) : null;
+            }
+
+            public ObjectSizeOptions Options { get; }
+            public long StopTime { get; }
+            public HashSet<object> Considered { get; }
+            public Statistics? Statistics { get; }
+        }
+
+        private static unsafe long ProcessEvaluationStack(Stack<object> eval, ref EvaluationState state, out long count)
         {
             count = 0;
             long totalSize = 0;
@@ -184,7 +193,7 @@ namespace ManagedObjectSize
                     continue;
                 }
 
-                state.UpdateConsidered();
+                state.Statistics?.UpdateConsidered();
 
                 var currentType = currentObject.GetType();
                 if (currentType == typeof(Pointer) || currentType.IsPointer)
@@ -220,7 +229,7 @@ namespace ManagedObjectSize
 
                 if (currentType.IsArray)
                 {
-                    HandleArray(eval, state, currentObject, currentType);
+                    HandleArray(eval, ref state, currentObject, currentType);
                 }
                 else
                 {
@@ -241,14 +250,14 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void HandleArray(Stack<object> eval, EvaluationState state, object obj, Type objType)
+        private static unsafe void HandleArray(Stack<object> eval, ref EvaluationState state, object obj, Type objType)
         {
             var elementType = objType.GetElementType();
             if (elementType != null && !elementType.IsPointer)
             {
-                state.UpdateArrays();
+                state.Statistics?.UpdateArrays();
 
-                (int sampleSize, int? populationSize, bool always) = GetSampleAndPopulateSize(state, obj, objType);
+                (int sampleSize, int? populationSize, bool always) = GetSampleAndPopulateSize(ref state, obj, objType);
 
                 // Only sample if:
                 // - the "always" flag has not been set in options
@@ -260,18 +269,18 @@ namespace ManagedObjectSize
                         HasLessElements(obj, sampleSize, elementType))
                     )
                 {
-                    HandleArrayNonSampled(eval, state, obj, elementType);
+                    HandleArrayNonSampled(eval, ref state, obj, elementType);
                 }
                 else
                 {
-                    HandleArraySampled(eval, state, obj, elementType, sampleSize);
+                    HandleArraySampled(eval, ref state, obj, elementType, sampleSize);
                 }
             }
         }
 
-        private static unsafe void HandleArraySampled(Stack<object> eval, EvaluationState state, object obj, Type? elementType, int sampleSize)
+        private static unsafe void HandleArraySampled(Stack<object> eval, ref EvaluationState state, object obj, Type elementType, int sampleSize)
         {
-            state.UpdateSampled();
+            state.Statistics?.UpdateSampled();
 
             int elementCount = 0;
 
@@ -299,8 +308,11 @@ namespace ManagedObjectSize
                             HandleArrayElement(localEval, localConsidered, elementType, element);
                             localConsidered.Add(element);
 
-                            state.UpdateSampleConsidered(localConsidered);
-                            state.UpdateSampleEval(localEval);
+                            if (state.Statistics != null)
+                            {
+                                state.Statistics.UpdateSampleConsidered(localConsidered);
+                                state.Statistics.UpdateSampleEval(localEval);
+                            }
                         }
                     }
                 }
@@ -308,7 +320,7 @@ namespace ManagedObjectSize
 
             if (localEval.Count > 0)
             {
-                double sizeOfSamples = ProcessEvaluationStack(localEval, state, out _);
+                double sizeOfSamples = ProcessEvaluationStack(localEval, ref state, out _);
 
                 var sample = new ArraySample
                 {
@@ -318,11 +330,11 @@ namespace ManagedObjectSize
 
                 eval.Push(sample);
 
-                state.UpdateEval(eval);
+                state.Statistics?.UpdateEval(eval);
             }
         }
 
-        private static unsafe (int SampleSize, int? PopulationSize, bool Always) GetSampleAndPopulateSize(EvaluationState state, object obj, Type elementType)
+        private static unsafe (int SampleSize, int? PopulationSize, bool Always) GetSampleAndPopulateSize(ref EvaluationState state, object obj, Type elementType)
         {
             if (state.Options.AlwaysUseArraySampleAlgorithm)
             {
@@ -410,9 +422,9 @@ namespace ManagedObjectSize
             return true;
         }
 
-        private static unsafe void HandleArrayNonSampled(Stack<object> eval, EvaluationState state, object obj, Type elementType)
+        private static unsafe void HandleArrayNonSampled(Stack<object> eval, ref EvaluationState state, object obj, Type elementType)
         {
-            state.UpdateNotSampled();
+            state.Statistics?.UpdateNotSampled();
 
             foreach (object element in (System.Collections.IEnumerable)obj)
             {
