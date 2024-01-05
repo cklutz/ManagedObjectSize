@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿//#define USE_GETHEAP_POINTER
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -83,7 +84,7 @@ namespace ManagedObjectSize
             }
 
             var eval = new Stack<object>();
-            var considered = new HashSet<ulong>();
+            var considered = new HashSet<object>(ReferenceEqualityComparer.Instance);
 
             eval.Push(obj);
 
@@ -103,8 +104,7 @@ namespace ManagedObjectSize
                     continue;
                 }
 
-                ulong objAddr = (ulong)GetHeapPointer(currentObject);
-                if (!considered.Add(objAddr))
+                if (!considered.Add(currentObject))
                 {
                     // Already seen this object.
                     continue;
@@ -174,7 +174,7 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void HandleArray(Stack<object> eval, HashSet<ulong> considered, object obj, Type objType)
+        private static unsafe void HandleArray(Stack<object> eval, HashSet<object> considered, object obj, Type objType)
         {
             var elementType = objType.GetElementType();
             if (elementType != null && !elementType.IsPointer)
@@ -185,8 +185,7 @@ namespace ManagedObjectSize
                     {
                         if (!elementType.IsValueType)
                         {
-                            ulong elementAddr = (ulong)GetHeapPointer(element);
-                            if (!considered.Contains(elementAddr))
+                            if (!considered.Contains(element))
                             {
                                 eval.Push(element);
                             }
@@ -200,35 +199,93 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void AddFields(Stack<object> eval, HashSet<ulong> considered, object currentObject, Type objType)
+        private static unsafe void AddFields(Stack<object> eval, HashSet<object> considered, object currentObject, Type objType)
         {
-            foreach (var field in objType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            foreach (var field in GetFields(objType))
             {
                 if (field.FieldType.IsValueType)
                 {
                     // Non reference type fields are "in place" in the actual type and thus are already included in
-                    // GetObjectExclusiveSize(). This is also true for custom value types.
-                    continue;
-                }
+                    // GetObjectExclusiveSize(). This is also true for custom value types. However, the later might
+                    // have reference type members. These need to be considered. So if the actual field we are dealing
+                    // with is a value type, we search it (and all its fields) for reference type fields. If we haven't
+                    // seen any of those before, we add it to be evaluated.
 
-                var fieldValue = field.GetValue(currentObject);
-                if (fieldValue != null)
-                {
-                    ulong fieldAddr = (ulong)GetHeapPointer(fieldValue);
-                    if (!considered.Contains(fieldAddr))
+                    var stack = new Stack<object?>();
+                    stack.Push(field.GetValue(currentObject));
+                    while (stack.Count > 0)
                     {
-                        eval.Push(fieldValue);
+                        var currentValue = stack.Pop();
+                        if (currentValue == null)
+                        {
+                            continue;
+                        }
+
+                        var fields = GetFields(currentValue.GetType());
+                        foreach (var f in fields)
+                        {
+                            object? value = f.GetValue(currentValue);
+                            if (f.FieldType.IsValueType)
+                            {
+                                // Ignore primitive types (like System.Int32). Due to their
+                                // nature (for example, System.Int32 has a field "m_value" of type
+                                // System.Int32), they would lead to endless processing here.
+                                if (!f.FieldType.IsPrimitive)
+                                {
+                                    stack.Push(value);
+                                }
+                            }
+                            else if (value != null)
+                            {
+                                // Found a reference type field/member inside the value type.
+                                if (!considered.Contains(value) && !eval.Contains(value))
+                                {
+                                    eval.Push(value);
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    var fieldValue = field.GetValue(currentObject);
+                    if (fieldValue != null)
+                    {
+                        if (!considered.Contains(fieldValue))
+                        {
+                            eval.Push(fieldValue);
+                        }
                     }
                 }
             }
         }
 
+        private static IEnumerable<FieldInfo> GetFields(Type type)
+        {
+            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                yield return field;
+            }
+
+            while (type.BaseType is not null)
+            {
+                foreach (var field in type.BaseType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    yield return field;
+                }
+
+                type = type.BaseType;
+            }
+        }
+
+#if USE_GETHEAP_POINTER
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe IntPtr GetHeapPointer(object @object)
         {
             var indirect = Unsafe.AsPointer(ref @object);
             return **(IntPtr**)(&indirect);
         }
+#endif
 
         // "Constants" are adapted from vm/object.h.
         private static readonly uint ObjHeaderSize = (uint)IntPtr.Size;
@@ -281,10 +338,13 @@ namespace ManagedObjectSize
                     if (componentSize > 0)
                     {
                         // Get number of components (strings and arrays)
+#if USE_GETHEAP_POINTER
                         var objAddr = GetHeapPointer(obj);
                         int numComponentsOffset = IntPtr.Size;
                         int numComponents = Marshal.ReadInt32(objAddr, numComponentsOffset);
-
+#else
+                        int numComponents = checked((int)GetNumComponents(obj));
+#endif
                         size += componentSize * numComponents;
                     }
                 }
@@ -351,14 +411,20 @@ namespace ManagedObjectSize
         {
             public byte Data;
         }
-
         internal static ref byte GetRawData(object obj) => ref Unsafe.As<RawData>(obj).Data;
+
+        internal class RawArrayData
+        {
+            public uint Length; // Array._numComponents padded to IntPtr
+        }
+
+        internal static ref uint GetNumComponents(object obj) => ref Unsafe.As<RawArrayData>(obj).Length;
 
         [StructLayout(LayoutKind.Explicit)]
         internal unsafe struct MethodTable
         {
             // According to src\vm\methodtable.h we have the following members in the MethodTable (that interest us here;
-            // there a more).
+            // there are more).
             //
             // Offset   Size
             // [0x0000]    4    DWORD m_dwFlags;       // Low WORD is component size for array and string types when
@@ -380,8 +446,8 @@ namespace ManagedObjectSize
 
             private const uint enum_flag_ContainsPointers = 0x01000000;
             private const uint enum_flag_HasComponentSize = 0x80000000;
-            public bool HasComponentSize => (Flags & enum_flag_HasComponentSize) != 0;
-            public bool ContainsPointers => (Flags & enum_flag_ContainsPointers) != 0;
+            public readonly bool HasComponentSize => (Flags & enum_flag_HasComponentSize) != 0;
+            public readonly bool ContainsPointers => (Flags & enum_flag_ContainsPointers) != 0;
         }
     }
 }
