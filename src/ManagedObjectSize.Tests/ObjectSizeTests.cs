@@ -265,7 +265,7 @@ namespace ManagedObjectSize.Tests
             var stringBuilder = new StringBuilder("Hello There");
             var selfRef = new SelfRef { Ref = new SelfRef() };
             selfRef.Ref.Ref = selfRef;
-            var withPointer = new TypeWithPointer { Ptr = (void*)ObjectSize.GetHeapPointer(@string) };
+            var withPointer = new TypeWithPointer { Ptr = (void*)Utils.GetVolatileHeapPointer(@string) };
 
             var stringArray = new string[] { "ccccc", "ccccc", "ccccc", "ccccc", "ccccc", "ccccc" };
             var valueArray = new int[] { 1, 2, 3 };
@@ -273,7 +273,7 @@ namespace ManagedObjectSize.Tests
             var refArray = new[] { new ExampleType(), new ExampleType() };
             var refWithDifferentStringsArray = new[] { new TypeWithStringRef("aaaaa"), new TypeWithStringRef("aaaaa") };
             var refWithSameStringsArray = new[] { new TypeWithStringRef("aaaaa"), new TypeWithStringRef("bbbbb") };
-            var pointerArray = new void*[] { (void*)ObjectSize.GetHeapPointer(@string), (void*)ObjectSize.GetHeapPointer(empty) };
+            var pointerArray = new void*[] { (void*)Utils.GetVolatileHeapPointer(@string), (void*)Utils.GetVolatileHeapPointer(empty) };
             var emptyValueArray = new int[] { };
             var emptyRefArray = new Empty[] { };
             var emptyValueRefArray = new ValueTypeWithRef[] { };
@@ -294,6 +294,9 @@ namespace ManagedObjectSize.Tests
             string internedString1 = String.Intern("INTERNED");
             string internedString2 = String.Intern("INTERNED");
             var internedStrings = new string[] { internedString1, internedString2 };
+
+            var privateBaseField = new WithPrivateBaseFieldType("Hello") { PublichBaseField = "Public" };
+            var valueTypeWithRefs = (1, 2, (3, (4, new StringBuilder("hi"))));
 
             var options = new ObjectSizeOptions();
             options.UseRtHelpers = useRtHelpers;
@@ -328,7 +331,11 @@ namespace ManagedObjectSize.Tests
 
             GetSize(options, internedStrings, data);
 
-            using (var dt = DataTarget.CreateSnapshotAndAttach(Process.GetCurrentProcess().Id))
+            GetSize(options, privateBaseField, data);
+
+            GetSize(options, valueTypeWithRefs, data);
+
+            using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
             {
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime())
                 {
@@ -342,13 +349,13 @@ namespace ManagedObjectSize.Tests
                         Assert.IsTrue(clrObj.IsValid, currentName + " IsValid");
 
                         // Make sure we are not comparing apples and oranges.
-                        Assert.AreEqual(data[address].Type.FullName, clrObj.Type?.ToString(), currentName + " Type");
+                        Assert.AreEqual(clrObj.Type?.ToString(), GetClrMDLikeTypeName(data[address].Type), currentName + " Type");
 
                         // Compare actual sizes
                         (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, options.DebugOutput);
-                        Assert.AreEqual(data[address].Count, count, currentName + " Count");
-                        Assert.AreEqual(data[address].InclusiveSize, (long)inclusiveSize, currentName + " InclusiveSize");
-                        Assert.AreEqual(data[address].ExclusiveSize, (long)exclusiveSize, currentName + " ExclusiveSize");
+                        Assert.AreEqual((long)inclusiveSize, data[address].InclusiveSize, currentName + " InclusiveSize");
+                        Assert.AreEqual((long)exclusiveSize, data[address].ExclusiveSize, currentName + " ExclusiveSize");
+                        Assert.AreEqual(count, data[address].Count, currentName + " Count");
                     }
                 }
             }
@@ -361,7 +368,7 @@ namespace ManagedObjectSize.Tests
             long exclusiveSize = ObjectSize.GetObjectExclusiveSize(obj, options);
             long inclusiveSize = ObjectSize.GetObjectInclusiveSize(obj, options, out long count);
 
-            ulong address = (ulong)ObjectSize.GetHeapPointer(obj);
+            ulong address = (ulong)Utils.GetVolatileHeapPointer(obj);
 
             sizes.Add(address, (name!, obj.GetType(), count, exclusiveSize, inclusiveSize));
         }
@@ -403,6 +410,84 @@ namespace ManagedObjectSize.Tests
 
             return (count, totalSize, input.Size);
         }
+
+        private static string GetClrMDLikeTypeName(Type type)
+        {
+            var sb = new StringBuilder();
+            GetClrMDLikeTypeName(type, sb);
+            return sb.ToString();
+        }
+
+        private static void GetClrMDLikeTypeName(Type type, StringBuilder sb)
+        {
+            bool isArray = false;
+            int arrayDimensions = 0;
+            if (type.IsArray)
+            {
+                isArray = true;
+                arrayDimensions = type.GetArrayRank();
+                type = type.GetElementType()!;
+            }
+
+            //if (type.IsNested)
+            if (type.DeclaringType is not null)
+            {
+                sb.Append(type.DeclaringType?.Namespace);
+                sb.Append('.');
+                sb.Append(type.DeclaringType?.Name);
+                sb.Append('+');
+            }
+            else
+            {
+                sb.Append(type.Namespace);
+                sb.Append('.');
+            }
+
+
+            if (type.IsGenericType)
+            {
+                int pos = type.Name.IndexOf('`');
+                if (pos != -1)
+                {
+                    sb.Append(type.Name.Remove(pos));
+                }
+                else
+                {
+                    // Shouldn't happen, but be conservative.
+                    sb.Append(type.Name);
+                }
+                sb.Append('<');
+
+                bool first = true;
+                foreach (var t in type.GetGenericArguments())
+                {
+                    if (!first)
+                    {
+                        sb.Append(", ");
+                    }
+
+                    GetClrMDLikeTypeName(t, sb);
+                    first = false;
+                }
+
+                sb.Append('>');
+            }
+            else
+            {
+                sb.Append(type.Name);
+            }
+
+            if (isArray)
+            {
+                sb.Append('[');
+                if (arrayDimensions > 1)
+                {
+                    sb.Append(',', arrayDimensions - 1);
+                }
+                sb.Append(']');
+            }
+        }
+
 
         private static readonly int[] s_sampleSizesFor100 = new[] { 2, 5, 10, 50, 75, 99, 100, 101 };
 
@@ -524,6 +609,25 @@ namespace ManagedObjectSize.Tests
         private unsafe class TypeWithPointer
         {
             public void* Ptr;
+        }
+
+        private class BaseType
+        {
+            public BaseType(string s)
+            {
+                m_privateBaseField = s;
+            }
+
+            private string m_privateBaseField;
+            public string PublichBaseField;
+            public override string ToString() => m_privateBaseField;
+        }
+        private class WithPrivateBaseFieldType : BaseType
+        {
+            public WithPrivateBaseFieldType(string s)
+                : base(s)
+            {
+            }
         }
     }
 }

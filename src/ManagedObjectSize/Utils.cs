@@ -1,9 +1,23 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace ManagedObjectSize
 {
     public class Utils
     {
+        /// <summary>
+        /// Returns a pointer to the object on the managed heap. The resulting address is not fixed,
+        /// that is, subject to be moved when GC next runs.
+        /// </summary>
+        /// <param name="object"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe IntPtr GetVolatileHeapPointer(object @object)
+        {
+            var indirect = Unsafe.AsPointer(ref @object);
+            return **(IntPtr**)(&indirect);
+        }
+
         /// <summary>
         /// Calculate required sample count for a given confidence level, interval and populate size.
         /// </summary>

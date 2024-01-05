@@ -1,4 +1,5 @@
 ﻿//#define FEATURE_STATISTICS
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -82,24 +83,20 @@ namespace ManagedObjectSize
             var eval = new Stack<object>();
             var state = new EvaluationState
             {
-                Considered = new(),
+                Considered = new(ReferenceEqualityComparer.Instance),
                 StopTime = options.GetStopTime(Environment.TickCount64),
                 Options = options
             };
 
             eval.Push(obj);
 
-#if FEATURE_STATISTICS
             state.StartStatistics();
             state.UpdateEval(eval);
-#endif
 
             long totalSize = ProcessEvaluationStack(eval, state, out count);
 
-#if FEATURE_STATISTICS
             state.StopStatistics();
             state.DumpStatistics(totalSize);
-#endif
 
             if (options.DebugOutput)
             {
@@ -113,11 +110,10 @@ namespace ManagedObjectSize
         {
             public long StopTime { get; set; }
             public ObjectSizeOptions Options { get; set; } = null!;
-            public HashSet<ulong> Considered { get; set; } = null!;
+            public HashSet<object> Considered { get; set; } = null!;
 
-#if FEATURE_STATISTICS
             private long m_started;
-            private long m_complete;
+            private long m_completed;
             private int m_maxConsidered;
             private int m_sampleMaxConsidered;
             private int m_maxEval;
@@ -126,31 +122,38 @@ namespace ManagedObjectSize
             private int m_notSampled;
             private int m_arrays;
 
+            [Conditional("FEATURE_STATISTICS")]
             public void DumpStatistics(long totalSize)
             {
-#pragma warning disable HAA0601 // Value type to reference type conversion causing boxing allocation
                 Options.DebugWriter.WriteLine("STATISTICS");
                 Options.DebugWriter.WriteLine($"  enabled options        : {Options.GetEnabledString()}");
-                Options.DebugWriter.WriteLine($"  elapsed                : {new TimeSpan(m_complete - m_started)}");
-                Options.DebugWriter.WriteLine($"  total size             : {totalSize.ToString("N0")} bytes");
+                Options.DebugWriter.WriteLine($"  elapsed                : {new TimeSpan(m_completed - m_started)}");
+                Options.DebugWriter.WriteLine($"  total size             : {totalSize:N0} bytes");
                 Options.DebugWriter.WriteLine($"  max seen/evaluated     : {m_maxConsidered:N0}/{m_maxEval:N0}");
                 Options.DebugWriter.WriteLine($"  arrays                 : {m_arrays:N0}");
                 Options.DebugWriter.WriteLine($"    not sampled          : {m_notSampled:N0}");
                 Options.DebugWriter.WriteLine($"    sampled              : {m_sampled:N0}");
                 Options.DebugWriter.WriteLine($"      max seen/evaluated : {m_sampleMaxConsidered:N0}/{m_sampleMaxEval:N0}");
-#pragma warning restore HAA0601 // Value type to reference type conversion causing boxing allocation
             }
 
-            public void StartStatistics() => m_started = System.Diagnostics.Stopwatch.GetTimestamp();
-            public void StopStatistics() => m_complete = System.Diagnostics.Stopwatch.GetTimestamp();
+            [Conditional("FEATURE_STATISTICS")]
+            public void StartStatistics() => m_started = Stopwatch.GetTimestamp();
+            [Conditional("FEATURE_STATISTICS")]
+            public void StopStatistics() => m_completed = Stopwatch.GetTimestamp();
+            [Conditional("FEATURE_STATISTICS")]
             public void UpdateConsidered() => m_maxConsidered = Math.Max(Considered.Count, m_maxConsidered);
-            public void UpdateSampleConsidered(HashSet<ulong> considered) => m_sampleMaxConsidered = Math.Max(considered.Count, m_sampleMaxConsidered);
+            [Conditional("FEATURE_STATISTICS")]
+            public void UpdateSampleConsidered(HashSet<object> considered) => m_sampleMaxConsidered = Math.Max(considered.Count, m_sampleMaxConsidered);
+            [Conditional("FEATURE_STATISTICS")]
             public void UpdateEval(Stack<object> eval) => m_maxEval = Math.Max(eval.Count, m_maxEval);
+            [Conditional("FEATURE_STATISTICS")]
             public void UpdateSampleEval(Stack<object> eval) => m_sampleMaxEval = Math.Max(eval.Count, m_sampleMaxEval);
+            [Conditional("FEATURE_STATISTICS")]
             public void UpdateSampled() => m_sampled++;
+            [Conditional("FEATURE_STATISTICS")]
             public void UpdateNotSampled() => m_notSampled++;
+            [Conditional("FEATURE_STATISTICS")]
             public void UpdateArrays() => m_arrays++;
-#endif
         }
 
         private static unsafe long ProcessEvaluationStack(Stack<object> eval, EvaluationState state, out long count)
@@ -175,16 +178,13 @@ namespace ManagedObjectSize
                     continue;
                 }
 
-                ulong objAddr = (ulong)GetHeapPointer(currentObject);
-                if (!state.Considered.Add(objAddr))
+                if (!state.Considered.Add(currentObject))
                 {
                     // Already seen this object.
                     continue;
                 }
 
-#if FEATURE_STATISTICS
                 state.UpdateConsidered();
-#endif
 
                 var currentType = currentObject.GetType();
                 if (currentType == typeof(Pointer) || currentType.IsPointer)
@@ -246,9 +246,8 @@ namespace ManagedObjectSize
             var elementType = objType.GetElementType();
             if (elementType != null && !elementType.IsPointer)
             {
-#if FEATURE_STATISTICS
                 state.UpdateArrays();
-#endif
+
                 (int sampleSize, int? populationSize, bool always) = GetSampleAndPopulateSize(state, obj, objType);
 
                 // Only sample if:
@@ -272,16 +271,14 @@ namespace ManagedObjectSize
 
         private static unsafe void HandleArraySampled(Stack<object> eval, EvaluationState state, object obj, Type? elementType, int sampleSize)
         {
-#if FEATURE_STATISTICS
             state.UpdateSampled();
-#endif
 
             int elementCount = 0;
 
             // TODO: Should these be from a pool? Measure if cost is too high allocating if we have
             // a "large" number of arrays to sample.
             var localEval = new Stack<object>();
-            var localConsidered = new HashSet<ulong>();
+            var localConsidered = new HashSet<object>(ReferenceEqualityComparer.Instance);
 
             foreach (object element in (System.Collections.IEnumerable)obj)
             {
@@ -297,15 +294,13 @@ namespace ManagedObjectSize
 
                     if (elementCount <= sampleSize)
                     {
-                        ulong elementAddr = (ulong)GetHeapPointer(element);
-                        if (!localConsidered.Contains(elementAddr))
+                        if (!localConsidered.Contains(element))
                         {
                             HandleArrayElement(localEval, localConsidered, elementType, element);
-                            localConsidered.Add(elementAddr);
-#if FEATURE_STATISTICS
-                                state.UpdateSampleConsidered(localConsidered);
-                                state.UpdateSampleEval(localEval);
-#endif
+                            localConsidered.Add(element);
+
+                            state.UpdateSampleConsidered(localConsidered);
+                            state.UpdateSampleEval(localEval);
                         }
                     }
                 }
@@ -322,9 +317,8 @@ namespace ManagedObjectSize
                 };
 
                 eval.Push(sample);
-#if FEATURE_STATISTICS
-                    state.UpdateEval(eval);
-#endif
+
+                state.UpdateEval(eval);
             }
         }
 
@@ -341,7 +335,7 @@ namespace ManagedObjectSize
 
                 if (state.Options.DebugOutput)
                 {
-                    state.Options.DebugWriter.WriteLine($"array {GetHeapPointer(obj)}/{elementType}[]: sampleSize={sampleSize:N0}");
+                    state.Options.DebugWriter.WriteLine($"array {Utils.GetVolatileHeapPointer(obj)}/{elementType}[]: sampleSize={sampleSize:N0}");
                 }
 
                 return (sampleSize, null, false);
@@ -355,7 +349,7 @@ namespace ManagedObjectSize
 
                 if (state.Options.DebugOutput)
                 {
-                    state.Options.DebugWriter.WriteLine($"array {GetHeapPointer(obj)}/{elementType}[]: population={populationSize:N0} sampleSize={sampleSize:N0}");
+                    state.Options.DebugWriter.WriteLine($"array {Utils.GetVolatileHeapPointer(obj)}/{elementType}[]: population={populationSize:N0} sampleSize={sampleSize:N0}");
                 }
 
                 return (sampleSize, populationSize, false);
@@ -418,9 +412,7 @@ namespace ManagedObjectSize
 
         private static unsafe void HandleArrayNonSampled(Stack<object> eval, EvaluationState state, object obj, Type elementType)
         {
-#if FEATURE_STATISTICS
             state.UpdateNotSampled();
-#endif
 
             foreach (object element in (System.Collections.IEnumerable)obj)
             {
@@ -431,12 +423,11 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void HandleArrayElement(Stack<object> eval, HashSet<ulong> considered, Type elementType, object element)
+        private static unsafe void HandleArrayElement(Stack<object> eval, HashSet<object> considered, Type elementType, object element)
         {
             if (!elementType.IsValueType)
             {
-                ulong elementAddr = (ulong)GetHeapPointer(element);
-                if (!considered.Contains(elementAddr))
+                if (!considered.Contains(element))
                 {
                     eval.Push(element);
                 }
@@ -447,34 +438,83 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void AddFields(Stack<object> eval, HashSet<ulong> considered, object currentObject, Type objType)
+        private static unsafe void AddFields(Stack<object> eval, HashSet<object> considered, object currentObject, Type objType)
         {
-            foreach (var field in objType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            foreach (var field in GetFields(objType))
             {
                 if (field.FieldType.IsValueType)
                 {
                     // Non reference type fields are "in place" in the actual type and thus are already included in
-                    // GetObjectExclusiveSize(). This is also true for custom value types.
-                    continue;
-                }
+                    // GetObjectExclusiveSize(). This is also true for custom value types. However, the later might
+                    // have reference type members. These need to be considered. So if the actual field we are dealing
+                    // with is a value type, we search it (and all its fields) for reference type fields. If we haven't
+                    // seen any of those before, we add it to be evaluated.
 
-                var fieldValue = field.GetValue(currentObject);
-                if (fieldValue != null)
-                {
-                    ulong fieldAddr = (ulong)GetHeapPointer(fieldValue);
-                    if (!considered.Contains(fieldAddr))
+                    var stack = new Stack<object?>();
+                    stack.Push(field.GetValue(currentObject));
+                    while (stack.Count > 0)
                     {
-                        eval.Push(fieldValue);
+                        var currentValue = stack.Pop();
+                        if (currentValue == null)
+                        {
+                            continue;
+                        }
+
+                        var fields = GetFields(currentValue.GetType());
+                        foreach (var f in fields)
+                        {
+                            object? value = f.GetValue(currentValue);
+                            if (f.FieldType.IsValueType)
+                            {
+                                // Ignore primitive types (like System.Int32). Due to their
+                                // nature (for example, System.Int32 has a field "m_value" of type
+                                // System.Int32), they would lead to endless processing here.
+                                if (!f.FieldType.IsPrimitive)
+                                {
+                                    stack.Push(value);
+                                }
+                            }
+                            else if (value != null)
+                            {
+                                // Found a reference type field/member inside the value type.
+                                if (!considered.Contains(value) && !eval.Contains(value))
+                                {
+                                    eval.Push(value);
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    var fieldValue = field.GetValue(currentObject);
+                    if (fieldValue != null)
+                    {
+                        if (!considered.Contains(fieldValue))
+                        {
+                            eval.Push(fieldValue);
+                        }
                     }
                 }
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe IntPtr GetHeapPointer(object @object)
+        private static IEnumerable<FieldInfo> GetFields(Type type)
         {
-            var indirect = Unsafe.AsPointer(ref @object);
-            return **(IntPtr**)(&indirect);
+            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                yield return field;
+            }
+
+            while (type.BaseType is not null)
+            {
+                foreach (var field in type.BaseType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    yield return field;
+                }
+
+                type = type.BaseType;
+            }
         }
 
         // "Constants" are adapted from vm/object.h.
@@ -528,9 +568,7 @@ namespace ManagedObjectSize
                     if (componentSize > 0)
                     {
                         // Get number of components (strings and arrays)
-                        var objAddr = GetHeapPointer(obj);
-                        int numComponentsOffset = IntPtr.Size;
-                        int numComponents = Marshal.ReadInt32(objAddr, numComponentsOffset);
+                        int numComponents = checked((int)GetNumComponents(obj));
 
                         size += componentSize * numComponents;
                     }
@@ -600,6 +638,13 @@ namespace ManagedObjectSize
         }
 
         internal static ref byte GetRawData(object obj) => ref Unsafe.As<RawData>(obj).Data;
+
+        internal class RawArrayData
+        {
+            public uint Length; // Array._numComponents padded to IntPtr
+        }
+
+        internal static ref uint GetNumComponents(object obj) => ref Unsafe.As<RawArrayData>(obj).Length;
 
         [StructLayout(LayoutKind.Explicit)]
         internal unsafe struct MethodTable

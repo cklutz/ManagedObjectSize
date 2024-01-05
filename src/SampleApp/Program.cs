@@ -19,7 +19,9 @@ namespace SampleApp
             Console.WriteLine("Full:   " + size.ToString("N0") + " bytes : " + sw.Elapsed);
 
             sw = Stopwatch.StartNew();
-            size = ObjectSize.GetObjectInclusiveSize(graph, new ObjectSizeOptions { ArraySampleCount = 1000 });
+            size = ObjectSize.GetObjectInclusiveSize(graph, new ObjectSizeOptions { 
+                ArraySampleCount = 1000
+            });
             sw.Stop();
             Console.WriteLine("Sample: " + size.ToString("N0") + " bytes : " + sw.Elapsed);
         }
