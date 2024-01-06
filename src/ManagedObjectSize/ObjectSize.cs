@@ -586,13 +586,16 @@ namespace ManagedObjectSize
                     }
                 }
 
+                // Ensure that the MethodTable* "mt" of "obj" does not get unloaded, while we need it above.
+                GC.KeepAlive(obj);
+
                 size = size < MinObjSize ? MinObjSize : size;
                 return size;
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe MethodTable* GetMethodTable(object obj)
+        private static unsafe MethodTable* GetMethodTable(object obj)
         {
             //
             // Get the MethodTable structure. The following code has been lifted from RuntimeHelpers.GetMethodTable().
