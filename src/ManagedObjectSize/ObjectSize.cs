@@ -464,6 +464,7 @@ namespace ManagedObjectSize
                 {
                     if (!IsReferenceOrContainsReferences(field.FieldType))
                     {
+                        // Value type contains no further reference type fields.
                         continue;
                     }
 
@@ -483,6 +484,7 @@ namespace ManagedObjectSize
                             object? value = f.GetValue(currentValue);
                             if (f.FieldType.IsValueType)
                             {
+                                // Check if field's type contains further reference type fields.
                                 if (IsReferenceOrContainsReferences(f.FieldType))
                                 {
                                     stack.Push(value);
