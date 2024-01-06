@@ -204,6 +204,7 @@ namespace ManagedObjectSize
                 Timeout = m_timeout,
                 CancellationToken = m_cancellationToken,
                 DebugWriter = m_debugWriter,
+                CollectStatistics = m_collectStatistics,
                 IsReadOnly = true
             };
             return result;
@@ -275,6 +276,15 @@ namespace ManagedObjectSize
                 }
 
                 sb.Append(nameof(DebugOutput)).Append("=true");
+            }
+            if (CollectStatistics)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(CollectStatistics)).Append("=true");
             }
 
             if (sb.Length == 0)

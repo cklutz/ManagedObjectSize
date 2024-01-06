@@ -454,13 +454,18 @@ namespace ManagedObjectSize
         {
             foreach (var field in GetFields(objType))
             {
+                // Non reference type fields are "in place" in the actual type and thus are already included in
+                // GetObjectExclusiveSize(). This is also true for custom value types. However, the later might
+                // have reference type members. These need to be considered. So if the actual field we are dealing
+                // with is a value type, we search it (and all its fields) for reference type fields. If we haven't
+                // seen any of those before, we add it to be evaluated.
+
                 if (field.FieldType.IsValueType)
                 {
-                    // Non reference type fields are "in place" in the actual type and thus are already included in
-                    // GetObjectExclusiveSize(). This is also true for custom value types. However, the later might
-                    // have reference type members. These need to be considered. So if the actual field we are dealing
-                    // with is a value type, we search it (and all its fields) for reference type fields. If we haven't
-                    // seen any of those before, we add it to be evaluated.
+                    if (!IsReferenceOrContainsReferences(field.FieldType))
+                    {
+                        continue;
+                    }
 
                     var stack = new Stack<object?>();
                     stack.Push(field.GetValue(currentObject));
@@ -478,10 +483,7 @@ namespace ManagedObjectSize
                             object? value = f.GetValue(currentValue);
                             if (f.FieldType.IsValueType)
                             {
-                                // Ignore primitive types (like System.Int32). Due to their
-                                // nature (for example, System.Int32 has a field "m_value" of type
-                                // System.Int32), they would lead to endless processing here.
-                                if (!f.FieldType.IsPrimitive)
+                                if (IsReferenceOrContainsReferences(f.FieldType))
                                 {
                                     stack.Push(value);
                                 }
@@ -645,6 +647,21 @@ namespace ManagedObjectSize
             //      return (MethodTable*)obj.GetType().TypeHandle.Value.ToPointer();
             // 
             // But since the CLR itself uses the above code internally, we rather stick with that.
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private unsafe static bool IsReferenceOrContainsReferences(Type type)
+        {
+            // Related to RuntimeHelpers.IsReferenceOrContainsReferences<>, but here we need to use a System.Type and
+            // not a generic parameter. Hence the following is equivalent to calling:
+            //
+            //   return (bool)typeof(RuntimeHelpers).GetMethod("IsReferenceOrContainsReferences").MakeGenericMethod(type).Invoke(null, null);
+            //
+            // Also, using this way to get the MethodTable, because GetMethodTable() requires a reference of that type.
+
+            bool result = !type.IsValueType || ((MethodTable*)type.TypeHandle.Value.ToPointer())->ContainsPointers;
+            GC.KeepAlive(type);
+            return result;
         }
 
         internal sealed class RawData
