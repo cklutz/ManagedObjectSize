@@ -619,7 +619,7 @@ namespace ManagedObjectSize.Tests
             }
 
             private string m_privateBaseField;
-            public string PublichBaseField;
+            public string PublichBaseField = null!;
             public override string ToString() => m_privateBaseField;
         }
         private class WithPrivateBaseFieldType : BaseType

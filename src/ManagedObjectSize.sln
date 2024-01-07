@@ -7,7 +7,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ManagedObjectSize", "Manage
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ManagedObjectSize.Tests", "ManagedObjectSize.Tests\ManagedObjectSize.Tests.csproj", "{F1B089A0-FF8D-4CD9-97FE-29826DAFEB91}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleApp", "SampleApp\SampleApp.csproj", "{1805F1BA-EB96-47F3-99F4-7B35F1613679}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SampleApp", "SampleApp\SampleApp.csproj", "{1805F1BA-EB96-47F3-99F4-7B35F1613679}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ManagedObjectSize.Benchmarks", "ManagedObjectSize.Benchmarks\ManagedObjectSize.Benchmarks.csproj", "{F5535CC5-2FC0-4594-878D-DCEAF4D66C06}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{1805F1BA-EB96-47F3-99F4-7B35F1613679}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1805F1BA-EB96-47F3-99F4-7B35F1613679}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1805F1BA-EB96-47F3-99F4-7B35F1613679}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F5535CC5-2FC0-4594-878D-DCEAF4D66C06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5535CC5-2FC0-4594-878D-DCEAF4D66C06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5535CC5-2FC0-4594-878D-DCEAF4D66C06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5535CC5-2FC0-4594-878D-DCEAF4D66C06}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

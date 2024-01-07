@@ -93,18 +93,20 @@ Sample:    800.097.990 bytes : 00:00:01.1667667
             return graph;
         }
 
+#pragma warning disable CS0649
+
         private class GraphObject
         {
             public int IntField;
-            public List<GraphNodeObject> ListField;
+            public List<GraphNodeObject> ListField = null!;
         }
 
         private class GraphNodeObject
         {
             public double DoubleField;
             public int IntField;
-            public string StringField;
-            public GraphObject ObjectField;
+            public string StringField = null!;
+            public GraphObject ObjectField = null!;
         }
     }
 }
