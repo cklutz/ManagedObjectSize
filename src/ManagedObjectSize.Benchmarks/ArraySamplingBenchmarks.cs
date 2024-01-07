@@ -17,7 +17,7 @@ namespace ManagedObjectSize.Benchmarks
         [GlobalSetup]
         public void GlobalSetup()
         {
-            m_graphData = CreateObjectGraph(N);
+            m_graphData = GraphObject.CreateObjectGraph(N);
             m_intData = new int[N];
             m_stringData = new string[N];
 
@@ -37,55 +37,5 @@ namespace ManagedObjectSize.Benchmarks
         [Benchmark] public long Sampling_Int32() => ObjectSize.GetObjectInclusiveSize(m_intData, m_samplingOptions);
         [Benchmark] public long Sampling_String() => ObjectSize.GetObjectInclusiveSize(m_stringData, m_samplingOptions);
         [Benchmark] public long Sampling_Graph() => ObjectSize.GetObjectInclusiveSize(m_graphData, m_samplingOptions);
-
-        // ---------------------------------------------------------------------------------------
-
-        private static GraphObject CreateObjectGraph(int num, bool inner = false)
-        {
-            var graph = new GraphObject
-            {
-                ListField = new List<GraphNodeObject>(num)
-            };
-
-            int digits = (int)Math.Log10(num) + 1;
-            var options = new ParallelOptions { MaxDegreeOfParallelism = (inner || num < 100) ? 1 : Environment.ProcessorCount };
-            Parallel.For(0, num, options,
-                () => new List<GraphNodeObject>(),
-                (i, state, local) =>
-                {
-                    var node = new GraphNodeObject { StringField = "Node#" };
-                    if (!inner)
-                    {
-                        node.ObjectField = CreateObjectGraph(100, true);
-                    }
-                    local.Add(node);
-                    return local;
-                },
-                local =>
-                {
-                    lock (graph.ListField)
-                    {
-                        graph.ListField.AddRange(local);
-                    }
-                });
-
-            return graph;
-        }
-
-#pragma warning disable CS0649
-
-        private class GraphObject
-        {
-            public int IntField;
-            public List<GraphNodeObject> ListField = null!;
-        }
-
-        private class GraphNodeObject
-        {
-            public double DoubleField;
-            public int IntField;
-            public string StringField = null!;
-            public GraphObject ObjectField = null!;
-        }
     }
 }

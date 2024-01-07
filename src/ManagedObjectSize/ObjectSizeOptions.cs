@@ -1,4 +1,5 @@
 ﻿
+using Microsoft.Extensions.ObjectPool;
 using System.Text;
 using System.Threading;
 
@@ -16,6 +17,59 @@ namespace ManagedObjectSize
         private double? m_arraySampleConfidenceLevel;
         private int m_arraySampleConfidenceInterval = 5;
         private bool m_alwaysUseArraySampleAlgorithm;
+        private ObjectPoolProvider? m_poolProvider;
+        private ObjectPool<Stack<object?>>? m_stackPool;
+        private ObjectPool<HashSet<object>>? m_hashSetPool;
+
+        public ObjectPoolProvider? PoolProvider
+        {
+            get => m_poolProvider;
+            set
+            {
+                CheckReadOnly();
+
+                if (value != null)
+                {
+                    m_stackPool = value.Create(StackPolicy.Instance);
+                    m_hashSetPool = value.Create(HashSetPolicy.Instance);
+                }
+                else
+                {
+                    m_stackPool = null;
+                    m_hashSetPool = null;
+                }
+
+                m_poolProvider = value;
+            }
+        }
+
+        private class StackPolicy : IPooledObjectPolicy<Stack<object?>>
+        {
+            public readonly static StackPolicy Instance = new();
+            public Stack<object?> Create() => new();
+            public bool Return(Stack<object?> obj)
+            {
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class HashSetPolicy : IPooledObjectPolicy<HashSet<object>>
+        {
+            public readonly static HashSetPolicy Instance = new();
+            public HashSet<object> Create() => new(ReferenceEqualityComparer.Instance);
+            public bool Return(HashSet<object> obj)
+            {
+                obj.Clear();
+                return true;
+            }
+        }
+
+        internal HashSet<object> CreateHashSet() => m_hashSetPool?.Get() ?? HashSetPolicy.Instance.Create();
+        internal Stack<object?> CreateStack() => m_stackPool?.Get() ?? StackPolicy.Instance.Create();
+
+        internal void Return(HashSet<object> obj) => m_hashSetPool?.Return(obj);
+        internal void Return(Stack<object?> obj) => m_stackPool?.Return(obj);
 
         public CancellationToken CancellationToken
         {
@@ -205,6 +259,12 @@ namespace ManagedObjectSize
                 CancellationToken = m_cancellationToken,
                 DebugWriter = m_debugWriter,
                 CollectStatistics = m_collectStatistics,
+                // Copy these using backing fields, not PoolProvider property.
+                // We want to use the actual pool instances and not create new ones.
+                m_poolProvider = m_poolProvider,
+                m_stackPool = m_stackPool,
+                m_hashSetPool = m_hashSetPool,
+
                 IsReadOnly = true
             };
             return result;

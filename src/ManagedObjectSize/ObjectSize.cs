@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using Microsoft.Extensions.ObjectPool;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -79,7 +80,7 @@ namespace ManagedObjectSize
 
             options = (options ?? new()).GetReadOnly();
 
-            var eval = new Stack<object>();
+            var eval = options.CreateStack();
             var state = new EvaluationState(options);
 
             eval.Push(obj);
@@ -102,6 +103,9 @@ namespace ManagedObjectSize
             {
                 state.Options.DebugWriter.WriteLine($"total: {totalSize:N0} ({obj.GetType()})");
             }
+
+            options.Return(state.Considered);
+            options.Return(eval);
 
             return totalSize;
         }
@@ -129,8 +133,8 @@ namespace ManagedObjectSize
             public void Stop() => m_completed = Stopwatch.GetTimestamp();
             public void UpdateConsidered() => m_maxConsidered = Math.Max(++m_considered, m_maxConsidered);
             public void UpdateSampleConsidered(HashSet<object> considered) => m_sampleMaxConsidered = Math.Max(considered.Count, m_sampleMaxConsidered);
-            public void UpdateEval(Stack<object> eval) => m_maxEval = Math.Max(eval.Count, m_maxEval);
-            public void UpdateSampleEval(Stack<object> eval) => m_sampleMaxEval = Math.Max(eval.Count, m_sampleMaxEval);
+            public void UpdateEval(Stack<object?> eval) => m_maxEval = Math.Max(eval.Count, m_maxEval);
+            public void UpdateSampleEval(Stack<object?> eval) => m_sampleMaxEval = Math.Max(eval.Count, m_sampleMaxEval);
             public void UpdateSampled() => m_sampled++;
             public void UpdateNotSampled() => m_notSampled++;
             public void UpdateArrays() => m_arrays++;
@@ -155,7 +159,7 @@ namespace ManagedObjectSize
             {
                 Options = options ?? throw new ArgumentNullException(nameof(options));
                 StopTime = options.GetStopTime(Environment.TickCount64);
-                Considered = new HashSet<object>(ReferenceEqualityComparer.Instance);
+                Considered = options.CreateHashSet();
                 Statistics = options.CollectStatistics ? new(options) : null;
             }
 
@@ -165,7 +169,7 @@ namespace ManagedObjectSize
             public Statistics? Statistics { get; }
         }
 
-        private static unsafe long ProcessEvaluationStack(Stack<object> eval, ref EvaluationState state, out long count)
+        private static unsafe long ProcessEvaluationStack(Stack<object?> eval, ref EvaluationState state, out long count)
         {
             count = 0;
             long totalSize = 0;
@@ -233,7 +237,7 @@ namespace ManagedObjectSize
                 }
                 else
                 {
-                    AddFields(eval, state.Considered, currentObject, currentType);
+                    AddFields(eval, ref state, currentObject, currentType);
                 }
             }
 
@@ -250,7 +254,7 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void HandleArray(Stack<object> eval, ref EvaluationState state, object obj, Type objType)
+        private static unsafe void HandleArray(Stack<object?> eval, ref EvaluationState state, object obj, Type objType)
         {
             var elementType = objType.GetElementType();
             if (elementType != null && !elementType.IsPointer)
@@ -278,7 +282,7 @@ namespace ManagedObjectSize
             }
         }
 
-        private static unsafe void HandleArraySampled(Stack<object> eval, ref EvaluationState state, object obj, Type elementType, int sampleSize)
+        private static unsafe void HandleArraySampled(Stack<object?> eval, ref EvaluationState state, object obj, Type elementType, int sampleSize)
         {
             state.Statistics?.UpdateSampled();
 
@@ -286,8 +290,8 @@ namespace ManagedObjectSize
 
             // TODO: Should these be from a pool? Measure if cost is too high allocating if we have
             // a "large" number of arrays to sample.
-            var localEval = new Stack<object>();
-            var localConsidered = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            var localEval = state.Options.CreateStack();
+            var localConsidered = state.Options.CreateHashSet();
 
             foreach (object element in (System.Collections.IEnumerable)obj)
             {
@@ -305,7 +309,7 @@ namespace ManagedObjectSize
                     {
                         if (!localConsidered.Contains(element))
                         {
-                            HandleArrayElement(localEval, localConsidered, elementType, element);
+                            HandleArrayElement(localEval, ref state, elementType, element);
                             localConsidered.Add(element);
 
                             if (state.Statistics != null)
@@ -332,6 +336,9 @@ namespace ManagedObjectSize
 
                 state.Statistics?.UpdateEval(eval);
             }
+
+            state.Options.Return(localEval);
+            state.Options.Return(localConsidered);
         }
 
         private static unsafe (int SampleSize, int? PopulationSize, bool Always) GetSampleAndPopulateSize(ref EvaluationState state, object obj, Type elementType)
@@ -422,7 +429,7 @@ namespace ManagedObjectSize
             return true;
         }
 
-        private static unsafe void HandleArrayNonSampled(Stack<object> eval, ref EvaluationState state, object obj, Type elementType)
+        private static unsafe void HandleArrayNonSampled(Stack<object?> eval, ref EvaluationState state, object obj, Type elementType)
         {
             state.Statistics?.UpdateNotSampled();
 
@@ -430,27 +437,27 @@ namespace ManagedObjectSize
             {
                 if (ShouldCountElement(element, elementType))
                 {
-                    HandleArrayElement(eval, state.Considered, elementType, element);
+                    HandleArrayElement(eval, ref state, elementType, element);
                 }
             }
         }
 
-        private static unsafe void HandleArrayElement(Stack<object> eval, HashSet<object> considered, Type elementType, object element)
+        private static unsafe void HandleArrayElement(Stack<object?> eval, ref EvaluationState state, Type elementType, object element)
         {
             if (!elementType.IsValueType)
             {
-                if (!considered.Contains(element))
+                if (!state.Considered.Contains(element))
                 {
                     eval.Push(element);
                 }
             }
             else
             {
-                AddFields(eval, considered, element, elementType);
+                AddFields(eval, ref state, element, elementType);
             }
         }
 
-        private static unsafe void AddFields(Stack<object> eval, HashSet<object> considered, object currentObject, Type objType)
+        private static unsafe void AddFields(Stack<object?> eval, ref EvaluationState state, object currentObject, Type objType)
         {
             foreach (var field in GetFields(objType))
             {
@@ -468,7 +475,7 @@ namespace ManagedObjectSize
                         continue;
                     }
 
-                    var stack = new Stack<object?>();
+                    var stack = state.Options.CreateStack();
                     stack.Push(field.GetValue(currentObject));
                     while (stack.Count > 0)
                     {
@@ -493,20 +500,21 @@ namespace ManagedObjectSize
                             else if (value != null)
                             {
                                 // Found a reference type field/member inside the value type.
-                                if (!considered.Contains(value) && !eval.Contains(value))
+                                if (!state.Considered.Contains(value) && !eval.Contains(value))
                                 {
                                     eval.Push(value);
                                 }
                             }
                         }
                     }
+                    state.Options.Return(stack);
                 }
                 else
                 {
                     var fieldValue = field.GetValue(currentObject);
                     if (fieldValue != null)
                     {
-                        if (!considered.Contains(fieldValue))
+                        if (!state.Considered.Contains(fieldValue))
                         {
                             eval.Push(fieldValue);
                         }

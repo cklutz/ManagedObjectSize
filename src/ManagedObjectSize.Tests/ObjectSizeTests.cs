@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Diagnostics.Runtime;
+using Microsoft.Extensions.ObjectPool;
 
 namespace ManagedObjectSize.Tests
 {
@@ -244,9 +245,10 @@ namespace ManagedObjectSize.Tests
         // spawning createdump.exe, reloading the temp, etc.).
 
         [DataTestMethod]
-        [DataRow(false)]
-        [DataRow(true)]
-        public unsafe void ObjectSize_ReportsCorrectSize(bool useRtHelpers)
+        [DataRow(false, false)]
+        [DataRow(false, true)]
+        [DataRow(true, false)]
+        public unsafe void ObjectSize_ReportsCorrectSize(bool useRtHelpers, bool useObjectPool)
         {
             var data = new Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
 
@@ -301,6 +303,17 @@ namespace ManagedObjectSize.Tests
             var options = new ObjectSizeOptions();
             options.UseRtHelpers = useRtHelpers;
             //options.DebugOutput = true;
+            if (useObjectPool)
+            {
+                options.PoolProvider = new DefaultObjectPoolProvider();
+            }
+
+            // We require the addresses of the test objects to not change. We determine the address during GetSize()
+            // and need it to stay the same until we have created a memory snapshot.
+            if (!GC.TryStartNoGCRegion(100_000_000))
+            {
+                throw new InvalidOperationException("Failed to start no GC region");
+            }
 
             GetSize(options, empty, data);
             GetSize(options, valueEmpty, data);
@@ -314,7 +327,6 @@ namespace ManagedObjectSize.Tests
             GetSize(options, stringBuilder, data);
             GetSize(options, selfRef, data);
             GetSize(options, withPointer, data);
-
             GetSize(options, stringArray, data);
             GetSize(options, valueArray, data);
             GetSize(options, valueRefArray, data);
@@ -328,34 +340,48 @@ namespace ManagedObjectSize.Tests
             GetSize(options, emptyPointerArray, data);
             GetSize(options, jaggedArray, data);
             GetSize(options, multiDimensionalArray, data);
-
             GetSize(options, internedStrings, data);
-
             GetSize(options, privateBaseField, data);
-
             GetSize(options, valueTypeWithRefs, data);
 
             using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
             {
+                // Got the snapshot. Release GC.
+                GC.EndNoGCRegion();
+
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime())
                 {
+                    Assert.IsTrue(runtime.Heap.CanWalkHeap);
+
                     foreach (ulong address in data.Keys)
                     {
                         string currentName = data[address].Name;
 
-                        var clrObj = runtime.Heap.GetObject(address);
+                        try
+                        {
+                            var clrObj = runtime.Heap.GetObject(address);
 
-                        // Sanity check that address (still) refers to something valid.
-                        Assert.IsTrue(clrObj.IsValid, currentName + " IsValid");
+                            // Sanity check that address (still) refers to something valid. This could fail if the object address
+                            // changed in between GetSize() and CreateSnapshotAndAttach().
+                            Assert.IsTrue(clrObj.IsValid, currentName + " IsValid");
 
-                        // Make sure we are not comparing apples and oranges.
-                        Assert.AreEqual(clrObj.Type?.ToString(), GetClrMDLikeTypeName(data[address].Type), currentName + " Type");
+                            // Make sure we are not comparing apples and oranges.
+                            Assert.AreEqual(clrObj.Type?.ToString(), GetClrMDLikeTypeName(data[address].Type), currentName + " Type");
 
-                        // Compare actual sizes
-                        (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, options.DebugOutput);
-                        Assert.AreEqual((long)inclusiveSize, data[address].InclusiveSize, currentName + " InclusiveSize");
-                        Assert.AreEqual((long)exclusiveSize, data[address].ExclusiveSize, currentName + " ExclusiveSize");
-                        Assert.AreEqual(count, data[address].Count, currentName + " Count");
+                            // Compare actual sizes
+                            (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, options.DebugOutput);
+                            Assert.AreEqual((long)inclusiveSize, data[address].InclusiveSize, currentName + " InclusiveSize");
+                            Assert.AreEqual((long)exclusiveSize, data[address].ExclusiveSize, currentName + " ExclusiveSize");
+                            Assert.AreEqual(count, data[address].Count, currentName + " Count");
+                        }
+                        catch (UnitTestAssertException)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception($"Handling {currentName}: " + ex.Message, ex);
+                        }
                     }
                 }
             }
