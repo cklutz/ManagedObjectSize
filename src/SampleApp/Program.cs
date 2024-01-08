@@ -1,4 +1,5 @@
 ﻿using ManagedObjectSize;
+using ManagedObjectSize.ObjectPool;
 using System.Diagnostics;
 
 namespace SampleApp
@@ -13,17 +14,36 @@ namespace SampleApp
             Console.WriteLine("Object created: " + sw.Elapsed);
             Console.Out.Flush();
 
+
+
             sw = Stopwatch.StartNew();
             long size = ObjectSize.GetObjectInclusiveSize(graph);
             sw.Stop();
-            Console.WriteLine("Full:   " + size.ToString("N0") + " bytes : " + sw.Elapsed);
+            Console.WriteLine("Full:            " + size.ToString("N0") + " bytes : " + sw.Elapsed);
 
             sw = Stopwatch.StartNew();
             size = ObjectSize.GetObjectInclusiveSize(graph, new ObjectSizeOptions { 
-                ArraySampleCount = 1000
+                ArraySampleCount = 1000,
             });
             sw.Stop();
-            Console.WriteLine("Sample: " + size.ToString("N0") + " bytes : " + sw.Elapsed);
+            Console.WriteLine("Sample:          " + size.ToString("N0") + " bytes : " + sw.Elapsed);
+
+            sw = Stopwatch.StartNew();
+            size = ObjectSize.GetObjectInclusiveSize(graph, new()
+            {
+                PoolProvider = new MicrosoftExtensionsObjectPoolPoolProvider()
+            });
+            sw.Stop();
+            Console.WriteLine("Full (pooled):   " + size.ToString("N0") + " bytes : " + sw.Elapsed);
+
+            sw = Stopwatch.StartNew();
+            size = ObjectSize.GetObjectInclusiveSize(graph, new()
+            {
+                ArraySampleCount = 1000,
+                PoolProvider = new MicrosoftExtensionsObjectPoolPoolProvider()
+            });
+            sw.Stop();
+            Console.WriteLine("Sample (pooled): " + size.ToString("N0") + " bytes : " + sw.Elapsed);
         }
 
 #if false

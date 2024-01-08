@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using ManagedObjectSize.ObjectPool;
+using ManagedObjectSize.Pooling;
 using Microsoft.Diagnostics.Runtime;
 using Microsoft.Extensions.ObjectPool;
 
@@ -305,7 +307,7 @@ namespace ManagedObjectSize.Tests
             //options.DebugOutput = true;
             if (useObjectPool)
             {
-                options.PoolProvider = new DefaultObjectPoolProvider();
+                options.UseMicrosoftExtensionsObjectPool();
             }
 
             // We require the addresses of the test objects to not change. We determine the address during GetSize()

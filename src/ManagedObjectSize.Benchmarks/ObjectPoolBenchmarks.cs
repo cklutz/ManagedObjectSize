@@ -1,5 +1,5 @@
 ﻿using BenchmarkDotNet.Attributes;
-using Microsoft.Extensions.ObjectPool;
+using ManagedObjectSize.ObjectPool;
 
 namespace ManagedObjectSize.Benchmarks
 {
@@ -15,10 +15,7 @@ namespace ManagedObjectSize.Benchmarks
         public void GlobalSetup()
         {
             m_graphData = GraphObject.CreateObjectGraph(N);
-            m_options = new ObjectSizeOptions
-            {
-                PoolProvider = new DefaultObjectPoolProvider()
-            };
+            m_options = new ObjectSizeOptions().UseMicrosoftExtensionsObjectPool();
         }
 
         [Benchmark] public long NoPool() => ObjectSize.GetObjectInclusiveSize(m_graphData);

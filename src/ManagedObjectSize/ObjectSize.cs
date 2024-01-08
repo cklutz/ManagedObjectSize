@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.ObjectPool;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -82,30 +81,36 @@ namespace ManagedObjectSize
 
             var eval = options.CreateStack();
             var state = new EvaluationState(options);
+            long totalSize;
 
-            eval.Push(obj);
-
-            if (state.Statistics != null)
+            try
             {
-                state.Statistics.Start();
-                state.Statistics.UpdateEval(eval);
+                eval.Push(obj);
+
+                if (state.Statistics != null)
+                {
+                    state.Statistics.Start();
+                    state.Statistics.UpdateEval(eval);
+                }
+
+                totalSize = ProcessEvaluationStack(eval, ref state, out count);
+
+                if (state.Statistics != null)
+                {
+                    state.Statistics.Stop();
+                    state.Statistics.Dump(totalSize);
+                }
+
+                if (options.DebugOutput)
+                {
+                    state.Options.DebugWriter.WriteLine($"total: {totalSize:N0} ({obj.GetType()})");
+                }
             }
-
-            long totalSize = ProcessEvaluationStack(eval, ref state, out count);
-
-            if (state.Statistics != null)
+            finally
             {
-                state.Statistics.Stop();
-                state.Statistics.Dump(totalSize);
+                options.Return(state.Considered);
+                options.Return(eval);
             }
-
-            if (options.DebugOutput)
-            {
-                state.Options.DebugWriter.WriteLine($"total: {totalSize:N0} ({obj.GetType()})");
-            }
-
-            options.Return(state.Considered);
-            options.Return(eval);
 
             return totalSize;
         }
@@ -287,58 +292,60 @@ namespace ManagedObjectSize
             state.Statistics?.UpdateSampled();
 
             int elementCount = 0;
-
-            // TODO: Should these be from a pool? Measure if cost is too high allocating if we have
-            // a "large" number of arrays to sample.
             var localEval = state.Options.CreateStack();
             var localConsidered = state.Options.CreateHashSet();
 
-            foreach (object element in (System.Collections.IEnumerable)obj)
+            try
             {
-                if (ShouldCountElement(element, elementType))
+                foreach (object element in (System.Collections.IEnumerable)obj)
                 {
-                    // We're only counting the elements that are actually non-null. This might
-                    // be less then the size of the array, when the array contains null elements.
-                    // On the other hand, if we could every element, we also count excess elements.
-                    // For example, the extra (unused) capacity of a List<>.
-                    // Only considering non-null elements is still correct, however, because null
-                    // elements don't contribute to the size.
-                    elementCount++;
-
-                    if (elementCount <= sampleSize)
+                    if (ShouldCountElement(element, elementType))
                     {
-                        if (!localConsidered.Contains(element))
-                        {
-                            HandleArrayElement(localEval, ref state, elementType, element);
-                            localConsidered.Add(element);
+                        // We're only counting the elements that are actually non-null. This might
+                        // be less then the size of the array, when the array contains null elements.
+                        // On the other hand, if we could every element, we also count excess elements.
+                        // For example, the extra (unused) capacity of a List<>.
+                        // Only considering non-null elements is still correct, however, because null
+                        // elements don't contribute to the size.
+                        elementCount++;
 
-                            if (state.Statistics != null)
+                        if (elementCount <= sampleSize)
+                        {
+                            if (!localConsidered.Contains(element))
                             {
-                                state.Statistics.UpdateSampleConsidered(localConsidered);
-                                state.Statistics.UpdateSampleEval(localEval);
+                                HandleArrayElement(localEval, ref state, elementType, element);
+                                localConsidered.Add(element);
+
+                                if (state.Statistics != null)
+                                {
+                                    state.Statistics.UpdateSampleConsidered(localConsidered);
+                                    state.Statistics.UpdateSampleEval(localEval);
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if (localEval.Count > 0)
-            {
-                double sizeOfSamples = ProcessEvaluationStack(localEval, ref state, out _);
-
-                var sample = new ArraySample
+                if (localEval.Count > 0)
                 {
-                    Size = (long)((sizeOfSamples / localConsidered.Count) * elementCount),
-                    ElementCount = elementCount
-                };
+                    double sizeOfSamples = ProcessEvaluationStack(localEval, ref state, out _);
 
-                eval.Push(sample);
+                    var sample = new ArraySample
+                    {
+                        Size = (long)((sizeOfSamples / localConsidered.Count) * elementCount),
+                        ElementCount = elementCount
+                    };
 
-                state.Statistics?.UpdateEval(eval);
+                    eval.Push(sample);
+
+                    state.Statistics?.UpdateEval(eval);
+                }
             }
-
-            state.Options.Return(localEval);
-            state.Options.Return(localConsidered);
+            finally
+            {
+                state.Options.Return(localEval);
+                state.Options.Return(localConsidered);
+            }
         }
 
         private static unsafe (int SampleSize, int? PopulationSize, bool Always) GetSampleAndPopulateSize(ref EvaluationState state, object obj, Type elementType)
@@ -476,38 +483,44 @@ namespace ManagedObjectSize
                     }
 
                     var stack = state.Options.CreateStack();
-                    stack.Push(field.GetValue(currentObject));
-                    while (stack.Count > 0)
+                    try
                     {
-                        var currentValue = stack.Pop();
-                        if (currentValue == null)
+                        stack.Push(field.GetValue(currentObject));
+                        while (stack.Count > 0)
                         {
-                            continue;
-                        }
-
-                        var fields = GetFields(currentValue.GetType());
-                        foreach (var f in fields)
-                        {
-                            object? value = f.GetValue(currentValue);
-                            if (f.FieldType.IsValueType)
+                            var currentValue = stack.Pop();
+                            if (currentValue == null)
                             {
-                                // Check if field's type contains further reference type fields.
-                                if (IsReferenceOrContainsReferences(f.FieldType))
-                                {
-                                    stack.Push(value);
-                                }
+                                continue;
                             }
-                            else if (value != null)
+
+                            var fields = GetFields(currentValue.GetType());
+                            foreach (var f in fields)
                             {
-                                // Found a reference type field/member inside the value type.
-                                if (!state.Considered.Contains(value) && !eval.Contains(value))
+                                object? value = f.GetValue(currentValue);
+                                if (f.FieldType.IsValueType)
                                 {
-                                    eval.Push(value);
+                                    // Check if field's type contains further reference type fields.
+                                    if (IsReferenceOrContainsReferences(f.FieldType))
+                                    {
+                                        stack.Push(value);
+                                    }
+                                }
+                                else if (value != null)
+                                {
+                                    // Found a reference type field/member inside the value type.
+                                    if (!state.Considered.Contains(value) && !eval.Contains(value))
+                                    {
+                                        eval.Push(value);
+                                    }
                                 }
                             }
                         }
                     }
-                    state.Options.Return(stack);
+                    finally
+                    {
+                        state.Options.Return(stack);
+                    }
                 }
                 else
                 {

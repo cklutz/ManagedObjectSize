@@ -1,10 +1,12 @@
-﻿
-using Microsoft.Extensions.ObjectPool;
-using System.Text;
-using System.Threading;
+﻿using System.Text;
 
 namespace ManagedObjectSize
 {
+    /// <summary>
+    /// Customizes behavior of calculating the size of a managed object.
+    /// </summary>
+    /// <see cref="ObjectSize.GetObjectInclusiveSize(object?, ObjectSizeOptions?)"/>
+    /// <see cref="ObjectSize.GetObjectInclusiveSize(object?, ObjectSizeOptions?, out long)"/>
     public class ObjectSizeOptions
     {
         private bool m_debugOutput;
@@ -17,59 +19,75 @@ namespace ManagedObjectSize
         private double? m_arraySampleConfidenceLevel;
         private int m_arraySampleConfidenceInterval = 5;
         private bool m_alwaysUseArraySampleAlgorithm;
-        private ObjectPoolProvider? m_poolProvider;
-        private ObjectPool<Stack<object?>>? m_stackPool;
-        private ObjectPool<HashSet<object>>? m_hashSetPool;
+        private Pooling.PoolProvider? m_poolProvider;
+        private Pooling.Pool<Stack<object?>>? m_stackPool;
+        private Pooling.Pool<HashSet<object>>? m_hashSetPool;
 
-        public ObjectPoolProvider? PoolProvider
+        /// <summary>
+        /// Gets or sets the pool provider to use. By default, pooling is not used.
+        /// </summary>
+        /// <value>
+        /// A reference to the pool provider to use. If <c>null</c>, then object pooling will not be used.
+        /// If previously non-<c>null</c>, but then set to <c>null</c>, existing pools will be abandoned and are
+        /// eligable for garbage collection.
+        /// </value>
+        public Pooling.PoolProvider? PoolProvider
         {
             get => m_poolProvider;
             set
             {
                 CheckReadOnly();
 
-                if (value != null)
+                m_poolProvider = value;
+
+                if (m_poolProvider != null)
                 {
-                    m_stackPool = value.Create(StackPolicy.Instance);
-                    m_hashSetPool = value.Create(HashSetPolicy.Instance);
+                    m_stackPool = m_poolProvider.Create(StackPolicy.Instance);
+                    m_hashSetPool = m_poolProvider.Create(HashSetPolicy.Instance);
                 }
                 else
                 {
+                    // Custom pool implementations might be disposable.
+                    // Typically (using Microsoft.Extensions.ObjectPool) they are not.
+                    // Here we simply abondon the pools and the objects they may hold,
+                    // letting the GC take care of them eventually.
+
+                    (m_stackPool as IDisposable)?.Dispose();
                     m_stackPool = null;
+
+                    (m_hashSetPool as IDisposable)?.Dispose();
                     m_hashSetPool = null;
                 }
-
-                m_poolProvider = value;
             }
         }
 
-        private class StackPolicy : IPooledObjectPolicy<Stack<object?>>
+        private class StackPolicy : Pooling.IPoolPolicy<Stack<object?>>
         {
             public readonly static StackPolicy Instance = new();
             public Stack<object?> Create() => new();
             public bool Return(Stack<object?> obj)
             {
-                obj.Clear();
-                return true;
+                obj?.Clear();
+                return obj is not null;
             }
         }
 
-        private class HashSetPolicy : IPooledObjectPolicy<HashSet<object>>
+        internal Stack<object?> CreateStack() => m_stackPool?.Get() ?? StackPolicy.Instance.Create();
+        internal void Return(Stack<object?> obj) => m_stackPool?.Return(obj);
+
+        private class HashSetPolicy : Pooling.IPoolPolicy<HashSet<object>>
         {
             public readonly static HashSetPolicy Instance = new();
             public HashSet<object> Create() => new(ReferenceEqualityComparer.Instance);
             public bool Return(HashSet<object> obj)
             {
-                obj.Clear();
-                return true;
+                obj?.Clear();
+                return obj is not null;
             }
         }
 
         internal HashSet<object> CreateHashSet() => m_hashSetPool?.Get() ?? HashSetPolicy.Instance.Create();
-        internal Stack<object?> CreateStack() => m_stackPool?.Get() ?? StackPolicy.Instance.Create();
-
         internal void Return(HashSet<object> obj) => m_hashSetPool?.Return(obj);
-        internal void Return(Stack<object?> obj) => m_stackPool?.Return(obj);
 
         public CancellationToken CancellationToken
         {
@@ -117,6 +135,10 @@ namespace ManagedObjectSize
             }
         }
 
+        /// <summary>
+        /// Gets or sets a value whether statistics should be collected. Statistics, if enabled, are written to
+        /// <see cref="DebugWriter"/>.
+        /// </summary>
         public bool CollectStatistics
         {
             get => m_collectStatistics;
@@ -127,7 +149,12 @@ namespace ManagedObjectSize
             }
         }
 
-        public bool UseRtHelpers
+        /// <summary>
+        /// <b>TEST USE ONLY</b> Gets or sets a value that causes internals for CLR to be used to access
+        /// an object's interna (based on <c>RuntimeHelpers</c>). Use this only for testing and comparison
+        /// with the features of this library.
+        /// </summary>
+        internal bool UseRtHelpers
         {
             get => m_useRtHelpers;
             set
@@ -259,6 +286,7 @@ namespace ManagedObjectSize
                 CancellationToken = m_cancellationToken,
                 DebugWriter = m_debugWriter,
                 CollectStatistics = m_collectStatistics,
+
                 // Copy these using backing fields, not PoolProvider property.
                 // We want to use the actual pool instances and not create new ones.
                 m_poolProvider = m_poolProvider,
@@ -345,6 +373,15 @@ namespace ManagedObjectSize
                 }
 
                 sb.Append(nameof(CollectStatistics)).Append("=true");
+            }
+            if (PoolProvider != null)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(' ');
+                }
+
+                sb.Append(nameof(PoolProvider)).Append("=(present)");
             }
 
             if (sb.Length == 0)

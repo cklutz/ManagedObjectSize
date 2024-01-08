@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ManagedObjectSize.ObjectPool\ManagedObjectSize.ObjectPool.csproj" />
     <ProjectReference Include="..\ManagedObjectSize\ManagedObjectSize.csproj" />
   </ItemGroup>
 
