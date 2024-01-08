@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+		<IsPackable>true</IsPackable>
+		<PackageId>ManagedObjectSize.ObjectPool</PackageId>
+		<Version>0.0.6</Version>
+		<Authors>Christian Klutz</Authors>
+		<Description>
+			Adapts Microsoft.Extensions.ObjectPool to be used with ManagedObjectSize package.
+		</Description>
+		<InformationalVersion>$(Version).0</InformationalVersion>
+		<FileVersion>$(Version).0</FileVersion>
+		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+		<RepositoryUrl>https://github.com/cklutz/ManagedObjectSize</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <None Include="..\..\LICENSE.txt" Link="LICENSE.txt">
+	    <PackagePath>\</PackagePath>
+	    <Pack>true</Pack>
+	  </None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\ManagedObjectSize\ManagedObjectSize.csproj" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.0" />
+	</ItemGroup>
+
+</Project>
