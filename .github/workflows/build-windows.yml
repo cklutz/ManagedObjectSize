@@ -29,7 +29,26 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration ${{matrix.configuration}} src/ManagedObjectSize.sln
     - name: Test
-      run: dotnet test --no-build --configuration ${{matrix.configuration}} --verbosity normal src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
+      run: >
+        dotnet test --no-build
+        --configuration ${{matrix.configuration}}
+        --verbosity normal
+        --blame-crash
+        --results-directory "TestResults-${{ matrix.configuration}}-${{ matrix.dotnet-version }}"
+        src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
+    - name: Upload dotnet test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: dotnet-testresults-${{ matrix.configuration}}-${{ matrix.dotnet-version }}
+        path: TestResults-${{ matrix.configuration}}-${{ matrix.dotnet-version }}
+      # Use always() to always run this step to publish test results when there are test failures
+      if: ${{ always() }}
+
     - if: ${{ matrix.dotnet-version == '8.0.x' && matrix.configuration == 'Release' }}
       name: Publish
-      run: dotnet nuget push **/*.nupkg -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols 
+      run: >
+        dotnet nuget push **/*.nupkg
+        -k ${{secrets.NUGET_API_KEY}}
+        --source https://api.nuget.org/v3/index.json
+        --skip-duplicate
+        --no-symbols 
