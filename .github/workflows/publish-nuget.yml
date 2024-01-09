@@ -17,12 +17,12 @@ jobs:
         with:
           dotnet-version: 8.0.x
           
-      - name: ManagedObjectSize publish on version change
-        id: publish_ManagedObjectSize
-        uses: rohith/publish-nuget@v2
-        with:
-          PROJECT_FILE_PATH: src\ManagedObjectSize\ManagedObjectSize.csproj
-          NUGET_KEY: ${{secrets.NUGET_API_KEY}}
+      # - name: ManagedObjectSize publish on version change
+      #  id: publish_ManagedObjectSize
+      #  uses: rohith/publish-nuget@v2
+      #  with:
+      #    PROJECT_FILE_PATH: src\ManagedObjectSize\ManagedObjectSize.csproj
+      #    NUGET_KEY: ${{secrets.NUGET_API_KEY}}
           
       - name: ManagedObjectSize.ObjectPool publish on version change
         id: publish_ManagedObjectSize_ObjectPool
