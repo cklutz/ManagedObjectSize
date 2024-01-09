@@ -32,7 +32,7 @@ jobs:
       run: dotnet test --no-build --configuration ${{matrix.configuration}} --verbosity normal src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
     - if: ${{ matrix.dotnet-version == '8.0.x' && matrix.configuration == 'Release' }}
       name: Publish ManagedObjectSize
-      run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src/ManagedObjectSize/bin/${{matrix.configuration}}/ManagedObjectSize*.nupkg
+      run: dotnet nuget push src/ManagedObjectSize/bin/${{matrix.configuration}}/*.nupkg -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols 
     - if: ${{ matrix.dotnet-version == '8.0.x' && matrix.configuration == 'Release' }}
       name: Publish ManagedObjectSize.ObjectPool
-      run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src/ManagedObjectSize.ObjectSize/bin/${{matrix.configuration}}/ManagedObjectSize.ObjectPool*.nupkg
+      run: dotnet nuget push src/ManagedObjectSize.ObjectSize/bin/${{matrix.configuration}}/*.nupkg -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols 
