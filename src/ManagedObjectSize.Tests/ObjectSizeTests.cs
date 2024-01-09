@@ -252,6 +252,11 @@ namespace ManagedObjectSize.Tests
         [DataRow(true, false)]
         public unsafe void ObjectSize_ReportsCorrectSize(bool useRtHelpers, bool useObjectPool)
         {
+            if (useRtHelpers && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return;
+            }
+
             var data = new Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
 
             // References are on stack and won't be moved by GC.
