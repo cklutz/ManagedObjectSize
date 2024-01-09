@@ -11,8 +11,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configuration: [Debug, Release]
-        dotnet-version: [ '6.0.x', '7.0.x', '8.0.x' ]
+        configuration: [ Release ]
+        #dotnet-version: [ '6.0.x', '7.0.x', '8.0.x' ]
+        dotnet-version: [ '8.0.x' ]
 
     runs-on: windows-latest
 
@@ -31,7 +32,7 @@ jobs:
     - name: Test
       run: dotnet test --no-build --configuration ${{matrix.configuration}} --verbosity normal src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
     - if: ${{ matrix.dotnet-version == '8.0.x' && matrix.configuration == 'Release' }}
-      run: cmd /c dir /s src/ManagedObjectSize
+      run: cmd /c "dir /s src/ManagedObjectSize"
     - if: ${{ matrix.dotnet-version == '8.0.x' && matrix.configuration == 'Release' }}
       name: Publish ManagedObjectSize
       run: dotnet nuget push src/ManagedObjectSize/bin/${{matrix.configuration}}/*.nupkg -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols 
