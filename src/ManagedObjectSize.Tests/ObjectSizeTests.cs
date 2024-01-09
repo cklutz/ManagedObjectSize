@@ -309,7 +309,7 @@ namespace ManagedObjectSize.Tests
 
             // We require the addresses of the test objects to not change. We determine the address during GetSize()
             // and need it to stay the same until we have created a memory snapshot.
-            if (!GC.TryStartNoGCRegion(500_000_000))
+            if (!GC.TryStartNoGCRegion(100_000_000))
             {
                 throw new InvalidOperationException("Failed to start no GC region");
             }
