@@ -8,7 +8,7 @@
 
 		<IsPackable>true</IsPackable>
 		<PackageId>ManagedObjectSize.ObjectPool</PackageId>
-		<Version>0.0.6</Version>
+		<Version>0.0.7</Version>
 		<Authors>Christian Klutz</Authors>
 		<Description>
 			Adapts Microsoft.Extensions.ObjectPool to be used with ManagedObjectSize package.
