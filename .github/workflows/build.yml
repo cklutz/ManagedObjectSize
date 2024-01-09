@@ -30,8 +30,6 @@ jobs:
     - name: Restore
       run: dotnet restore src/ManagedObjectSize.sln
     - name: Build
-      run: dotnet build --no-restore --configuration $env:Configuration src/ManagedObjectSize.sln
-      env:
-        Configuration: ${{ matrix.configuration }}
+      run: dotnet build --no-restore --configuration ${{ matrix.configuration }} src/ManagedObjectSize.sln
     - name: Test
       run: dotnet test --no-build --verbosity normal src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
