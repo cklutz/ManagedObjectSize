@@ -13,6 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Publish ManagedObjectSize 
-        run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --skip-duplicate --no-symbols src\ManagedObjectSize\bin\Release\*.nupkg
+        run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src\ManagedObjectSize\bin\Release\*.nupkg
       - name: Publish ManagedObjectSize.ObjectPool
-        run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --skip-duplicate --no-symbols src\ManagedObjectSize.ObjectPool\bin\Release\*.nupkg
+        run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src\ManagedObjectSize.ObjectPool\bin\Release\*.nupkg
