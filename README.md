@@ -12,10 +12,10 @@ There are two packages. The `ManagedObjectSize` package contains the core functi
 The `ManagedObjectSize.ObjectPool` package provides ready-to-use helpers to use `Microsoft.Extensions.ObjectPool` as the object pooling implementation. This way
 the core package has no further dependencies itself.
 
-|Package                       | Version |
-|------------------------------|---------|
-| ManagedObjectSize            | [![Nuget](https://img.shields.io/nuget/v/ManagedObjectSize)](https://www.nuget.org/packages/ManagedObjectSize/)
-| ManagedObjectSize.ObjectPool | [![Nuget](https://img.shields.io/nuget/v/ManagedObjectSize.ObjectPool)](https://www.nuget.org/packages/ManagedObjectSize.ObjectPool/)
+|Package                       | Latest  | Stable |
+|------------------------------|---------|--------|
+| ManagedObjectSize            | [![Nuget](https://img.shields.io/nuget/vpre/ManagedObjectSize)](https://www.nuget.org/packages/ManagedObjectSize/) | [![Nuget](https://img.shields.io/nuget/v/ManagedObjectSize)](https://www.nuget.org/packages/ManagedObjectSize/) |
+| ManagedObjectSize.ObjectPool | [![Nuget](https://img.shields.io/nuget/vpre/ManagedObjectSize.ObjectPool)](https://www.nuget.org/packages/ManagedObjectSize.ObjectPool/) | [![Nuget](https://img.shields.io/nuget/v/ManagedObjectSize.ObjectPool)](https://www.nuget.org/packages/ManagedObjectSize.ObjectPool/) |
 
 
 The algorithm and ideas are based largely on work from
