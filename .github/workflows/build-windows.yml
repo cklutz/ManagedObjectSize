@@ -30,3 +30,7 @@ jobs:
       run: dotnet build --no-restore --configuration ${{matrix.configuration}} src/ManagedObjectSize.sln
     - name: Test
       run: dotnet test --no-build --configuration ${{matrix.configuration}} --verbosity normal src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
+    - if: ${{ matrix.dotnet-version == '8.0.x' && matrix.configuration == 'Release' }}
+      name: Publish
+      run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src\ManagedObjectSize\bin\Release\ManagedObjectSize*.nupkg
+      run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src\ManagedObjectSize.ObjectSize\bin\Release\ManagedObjectSize.ObjectPool*.nupkg
