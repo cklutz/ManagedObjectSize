@@ -1,29 +1,18 @@
 name: Publish to NuGet
 
-on: workflow_dispatch
-
+# Only trigger, when the build workflow succeeded
+on:
+  workflow_run:
+    workflows: ["Windows-CoreCLR-8.0"]
+    types:
+      - completed
 jobs:
   publish:
-    name: build, pack & publish
+    name: publish
     runs-on: windows-latest
-    
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Setup .NET 8.x
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: 8.0.x
-      - name: ManagedObjectSize publish on version change
-        id: publish_ManagedObjectSize
-        uses: rohith/publish-nuget@v2
-        with:
-          PROJECT_FILE_PATH: src\ManagedObjectSize\ManagedObjectSize.csproj
-          NUGET_KEY: ${{secrets.NUGET_API_KEY}}
-      - name: ManagedObjectSize.ObjectPool publish on version change
-        id: publish_ManagedObjectSize_ObjectPool
-        uses: rohith/publish-nuget@v2
-        with:
-          PROJECT_FILE_PATH: src\ManagedObjectSize.ObjectPool\ManagedObjectSize.ObjectPool.csproj
-          NUGET_KEY: ${{secrets.NUGET_API_KEY}}
+      - name: Publish ManagedObjectSize 
+        run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src\ManagedObjectSize\bin\Release\*.nupkg
+      - name: Publish ManagedObjectSize.ObjectPool
+        run: dotnet nuget push -k ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate --no-symbols src\ManagedObjectSize.ObjectPool\bin\Release\*.nupkg
