@@ -35,15 +35,14 @@ jobs:
         --verbosity normal
         --blame --blame-crash
         --results-directory "TestResults-${{ matrix.configuration}}-${{ matrix.dotnet-version }}"
-        --output "TestOutput-${{ matrix.configuration}}-${{ matrix.dotnet-version }}"
         src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
-    - name: Upload dotnet test results
-      uses: actions/upload-artifact@v3
-      with:
-        name: dotnet-testoutput-${{ matrix.configuration}}-${{ matrix.dotnet-version }}
-        path: TestOutput-${{ matrix.configuration}}-${{ matrix.dotnet-version }}
-      # Use always() to always run this step to publish test results when there are test failures
-      if: ${{ always() }}
+    # - name: Upload dotnet test results
+    #   uses: actions/upload-artifact@v3
+    #   with:
+    #     name: dotnet-testoutput-${{ matrix.configuration}}-${{ matrix.dotnet-version }}
+    #     path: TestOutput-${{ matrix.configuration}}-${{ matrix.dotnet-version }}
+    #   # Use always() to always run this step to publish test results when there are test failures
+    #   if: ${{ always() }}
     - name: Upload dotnet test results
       uses: actions/upload-artifact@v3
       with:
