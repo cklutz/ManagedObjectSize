@@ -1,0 +1,29 @@
+name: build-ubuntu
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+        dotnet-version: [ '6.0.x', '7.0.x', '8.0.x' ]
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET ${{ matrix.dotnet-version }}
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ matrix.dotnet-version }}
+    - name: Restore dependencies
+      run: dotnet restore src/ManagedObjectSize.sln
+    - name: Build
+      run: dotnet build --no-restore --configuration ${{matrix.configuration}} src/ManagedObjectSize.sln
+    - name: Test
+      run: dotnet test --no-build --configuration ${{matrix.configuration}} --verbosity normal src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
