@@ -375,7 +375,7 @@ namespace ManagedObjectSize.Tests
 
             GetSize(options, name, obj, data);
 
-
+            GC.EndNoGCRegion();
 #if false
             using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
             {
