@@ -349,10 +349,7 @@ namespace ManagedObjectSize.Tests
             return result;
         }
 
-        [DllImport("libc")]
-        private static extern int prctl(int option, UIntPtr arg2, UIntPtr arg3, UIntPtr arg4, UIntPtr arg5);
-        private const int PR_SET_PTRACER = 0x59616d61;
-
+        public TestContext TestContext { get; set; } = null!;
 
         [TestMethod]
         [DynamicData(nameof(GetTestObjects), DynamicDataSourceType.Method)]
@@ -376,15 +373,21 @@ namespace ManagedObjectSize.Tests
 
             GetSize(options, name, obj, data);
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                prctl(PR_SET_PTRACER, (UIntPtr)Environment.ProcessId, UIntPtr.Zero, UIntPtr.Zero, UIntPtr.Zero);
-            }
-
             using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
             {
                 // Got the snapshot. Release GC.
                 GC.EndNoGCRegion();
+
+                TestContext.WriteLine("ObjectSize: starting");
+                TestContext.WriteLine("ObjectSize: PointerSize " + dt.DataReader.PointerSize);
+                TestContext.WriteLine("ObjectSize: Architecture " + dt.DataReader.Architecture);
+                TestContext.WriteLine("ObjectSize: DisplayName " + dt.DataReader.DisplayName);
+
+                foreach (var x in dt.ClrVersions)
+                {
+                    TestContext.WriteLine("ObjectSize: " + x.Version);
+                }
+                TestContext.WriteLine("ObjectSize: complete");
 
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime())
                 {
