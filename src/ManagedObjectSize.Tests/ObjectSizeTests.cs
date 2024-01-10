@@ -376,7 +376,13 @@ namespace ManagedObjectSize.Tests
                 // Got the snapshot. Release GC.
                 GC.EndNoGCRegion();
 
-                using (var runtime = dt.ClrVersions.Single().CreateRuntime("dkdkd"))
+                string dacPath = "ffo";
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    dacPath = "/usr/share/dotnet/Microsoft.NETCore.App/7.0.405/libmscordaccore.so";
+                }
+
+                using (var runtime = dt.ClrVersions.Single().CreateRuntime(dacPath))
                 {
 #if false
                     Assert.IsTrue(runtime.Heap.CanWalkHeap);
