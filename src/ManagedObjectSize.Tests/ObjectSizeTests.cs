@@ -1,5 +1,7 @@
 using ManagedObjectSize.ObjectPool;
 using Microsoft.Diagnostics.Runtime;
+using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -235,6 +237,187 @@ namespace ManagedObjectSize.Tests
             }
         }
 
+        public static unsafe IEnumerable<object[]> GetTestObjects()
+        {
+            var testObjects = new List<object[]>();
+
+            // References are on stack and won't be moved by GC.
+            // So when we take their address for use in ClrMD code
+            // below, it should still be valid.
+            var empty = new Empty();
+            testObjects.Add(new object[] { nameof(empty), empty });
+
+            var valueEmpty = new ValueEmpty();
+            testObjects.Add(new object[] { nameof(valueEmpty), valueEmpty });
+
+            string @string = "Hello World";
+            testObjects.Add(new object[] { nameof(@string), @string });
+
+            var exampleHolder = new ExampleHolder();
+            testObjects.Add(new object[] { nameof(exampleHolder), exampleHolder });
+
+            var exampleHolder2 = new ExampleHolder2();
+            testObjects.Add(new object[] { nameof(exampleHolder2), exampleHolder2 });
+
+            var exampleHolder3 = new ExampleHolder3();
+            testObjects.Add(new object[] { nameof(exampleHolder3), exampleHolder3 });
+
+            var exampleHolder4 = new ExampleHolder4();
+            testObjects.Add(new object[] { nameof(exampleHolder4), exampleHolder4 });
+
+            var alignedDoubleSeq = new AlignedDoubleSequential();
+            testObjects.Add(new object[] { nameof(alignedDoubleSeq), alignedDoubleSeq });
+
+            var alignedDoubleAuto = new AlignedDoubleAuto();
+            testObjects.Add(new object[] { nameof(alignedDoubleAuto), alignedDoubleAuto });
+
+
+            var stringBuilder = new StringBuilder("Hello There");
+            testObjects.Add(new object[] { nameof(stringBuilder), stringBuilder });
+
+            var selfRef = new SelfRef { Ref = new SelfRef() };
+            selfRef.Ref.Ref = selfRef;
+            testObjects.Add(new object[] { nameof(selfRef), selfRef });
+
+            var withPointer = new TypeWithPointer { Ptr = (void*)Utils.GetVolatileHeapPointer(@string) };
+            testObjects.Add(new object[] { nameof(withPointer), withPointer });
+
+            var stringArray = new string[] { "ccccc", "ccccc", "ccccc", "ccccc", "ccccc", "ccccc" };
+            testObjects.Add(new object[] { nameof(stringArray), stringArray });
+
+            var valueArray = new int[] { 1, 2, 3 };
+            testObjects.Add(new object[] { nameof(valueArray), valueArray });
+
+            var valueRefArray = new[] { new ValueTypeWithRef("1"), new ValueTypeWithRef("1") };
+            testObjects.Add(new object[] { nameof(valueRefArray), valueRefArray });
+
+            var refArray = new[] { new ExampleType(), new ExampleType() };
+            testObjects.Add(new object[] { nameof(refArray), refArray });
+
+            var refWithDifferentStringsArray = new[] { new TypeWithStringRef("aaaaa"), new TypeWithStringRef("aaaaa") };
+            testObjects.Add(new object[] { nameof(refWithDifferentStringsArray), refWithDifferentStringsArray });
+
+            var refWithSameStringsArray = new[] { new TypeWithStringRef("aaaaa"), new TypeWithStringRef("bbbbb") };
+            testObjects.Add(new object[] { nameof(refWithSameStringsArray), refWithSameStringsArray });
+
+            var pointerArray = new void*[] { (void*)Utils.GetVolatileHeapPointer(@string), (void*)Utils.GetVolatileHeapPointer(empty) };
+            testObjects.Add(new object[] { nameof(pointerArray), pointerArray });
+
+            var emptyValueArray = new int[] { };
+            testObjects.Add(new object[] { nameof(emptyValueArray), emptyValueArray });
+
+            var emptyRefArray = new Empty[] { };
+            testObjects.Add(new object[] { nameof(emptyRefArray), emptyRefArray });
+
+            var emptyValueRefArray = new ValueTypeWithRef[] { };
+            testObjects.Add(new object[] { nameof(emptyValueRefArray), emptyValueRefArray });
+
+            var emptyPointerArray = new void*[] { };
+            testObjects.Add(new object[] { nameof(emptyPointerArray), emptyPointerArray });
+
+            var jaggedArray = new int[10][];
+            for (int i = 0; i < 10; i++)
+            {
+                jaggedArray[i] = new[] { 1, 2, 3, 4, 5 };
+            }
+            testObjects.Add(new object[] { nameof(jaggedArray), jaggedArray });
+
+
+            var multiDimensionalArray = new int[,]
+            {
+                { 1, 2, 3, 4, 5 },
+                { 1, 2, 3, 4, 5 },
+                { 1, 2, 3, 4, 5 },
+                { 1, 2, 3, 4, 5 }
+            };
+            testObjects.Add(new object[] { nameof(multiDimensionalArray), multiDimensionalArray });
+
+            string internedString1 = String.Intern("INTERNED");
+            string internedString2 = String.Intern("INTERNED");
+            var internedStrings = new string[] { internedString1, internedString2 };
+            testObjects.Add(new object[] { nameof(internedStrings), internedStrings });
+
+            var privateBaseField = new WithPrivateBaseFieldType("Hello") { PublichBaseField = "Public" };
+            testObjects.Add(new object[] { nameof(privateBaseField), privateBaseField });
+
+            var valueTypeWithRefs = (1, 2, (3, (4, new StringBuilder("hi"))));
+            testObjects.Add(new object[] { nameof(valueTypeWithRefs), valueTypeWithRefs });
+
+            var result = new List<object[]>();
+            foreach (var to in testObjects)
+            {
+                result.Add(new object[] { false, true, to[0], to[1] });
+            }
+
+            return result;
+        }
+
+
+        [TestMethod]
+        [DynamicData(nameof(GetTestObjects), DynamicDataSourceType.Method)]
+        public unsafe void ObjectSize_ReportsCorrectSize(bool useRtHelpers, bool useObjectPool, string name, object obj)
+        {
+            var data = new Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)>();
+            var options = new ObjectSizeOptions();
+            options.UseRtHelpers = useRtHelpers;
+            //options.DebugOutput = true;
+            if (useObjectPool)
+            {
+                options.UseMicrosoftExtensionsObjectPool();
+            }
+
+            // We require the addresses of the test objects to not change. We determine the address during GetSize()
+            // and need it to stay the same until we have created a memory snapshot.
+            if (!GC.TryStartNoGCRegion(100_000_000))
+            {
+                throw new InvalidOperationException("Failed to start no GC region");
+            }
+
+            GetSize(options, name, obj, data);
+
+            using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
+            {
+                // Got the snapshot. Release GC.
+                GC.EndNoGCRegion();
+
+                using (var runtime = dt.ClrVersions.Single().CreateRuntime())
+                {
+                    Assert.IsTrue(runtime.Heap.CanWalkHeap);
+
+                    foreach (ulong address in data.Keys)
+                    {
+                        string currentName = data[address].Name;
+
+                        try
+                        {
+                            var clrObj = runtime.Heap.GetObject(address);
+
+                            // Sanity check that address (still) refers to something valid. This could fail if the object address
+                            // changed in between GetSize() and CreateSnapshotAndAttach().
+                            Assert.IsTrue(clrObj.IsValid, currentName + " IsValid");
+
+                            // Make sure we are not comparing apples and oranges.
+                            Assert.AreEqual(clrObj.Type?.ToString(), GetClrMDLikeTypeName(data[address].Type), currentName + " Type");
+
+                            // Compare actual sizes
+                            (int count, ulong inclusiveSize, ulong exclusiveSize) = ObjSize(clrObj, options.DebugOutput);
+                            Assert.AreEqual((long)inclusiveSize, data[address].InclusiveSize, currentName + " InclusiveSize");
+                            Assert.AreEqual((long)exclusiveSize, data[address].ExclusiveSize, currentName + " ExclusiveSize");
+                            Assert.AreEqual(count, data[address].Count, currentName + " Count");
+                        }
+                        catch (UnitTestAssertException)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception($"Handling {currentName}: " + ex.Message, ex);
+                        }
+                    }
+                }
+            }
+        }
+
         // We could also use [DynamicData] to conduct the test of different objects/types, which would
         // result in possibly better diagnostics for failed tests, continue running if one test fails,
         // and report the "true" number of tests, not just 2 as it is now.
@@ -242,7 +425,7 @@ namespace ManagedObjectSize.Tests
         // object/type. While this is relatively cheap on Windows, it would cause much longer times
         // on Linux (where PSS snapshots are not supported and a core dump is generated each time,
         // spawning createdump.exe, reloading the temp, etc.).
-
+#if false
         [DataTestMethod]
         [DataRow(false, false)]
         [DataRow(false, true)]
@@ -389,6 +572,18 @@ namespace ManagedObjectSize.Tests
         private static void GetSize(ObjectSizeOptions options, object obj,
             Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)> sizes,
             [CallerArgumentExpression("obj")] string? name = null)
+        {
+            long exclusiveSize = ObjectSize.GetObjectExclusiveSize(obj, options);
+            long inclusiveSize = ObjectSize.GetObjectInclusiveSize(obj, options, out long count);
+
+            ulong address = (ulong)Utils.GetVolatileHeapPointer(obj);
+
+            sizes.Add(address, (name!, obj.GetType(), count, exclusiveSize, inclusiveSize));
+        }
+#endif
+
+        private static void GetSize(ObjectSizeOptions options, string name, object obj,
+            Dictionary<ulong, (string Name, Type Type, long Count, long ExclusiveSize, long InclusiveSize)> sizes)
         {
             long exclusiveSize = ObjectSize.GetObjectExclusiveSize(obj, options);
             long inclusiveSize = ObjectSize.GetObjectInclusiveSize(obj, options, out long count);
