@@ -349,8 +349,6 @@ namespace ManagedObjectSize.Tests
             return result;
         }
 
-        public TestContext TestContext { get; set; } = null!;
-
         [TestMethod]
         [DynamicData(nameof(GetTestObjects), DynamicDataSourceType.Method)]
         public unsafe void ObjectSize_ReportsCorrectSize(bool useRtHelpers, bool useObjectPool, string name, object obj)
@@ -378,20 +376,9 @@ namespace ManagedObjectSize.Tests
                 // Got the snapshot. Release GC.
                 GC.EndNoGCRegion();
 
-                TestContext.WriteLine("ObjectSize: starting");
-                TestContext.WriteLine("ObjectSize: PointerSize " + dt.DataReader.PointerSize);
-                TestContext.WriteLine("ObjectSize: Architecture " + dt.DataReader.Architecture);
-                TestContext.WriteLine("ObjectSize: DisplayName " + dt.DataReader.DisplayName);
-
-                foreach (var x in dt.ClrVersions)
-                {
-                    TestContext.WriteLine("ObjectSize: " + x.Version);
-                }
-                TestContext.WriteLine("ObjectSize: complete");
-
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime())
                 {
-#if false
+#if true
                     Assert.IsTrue(runtime.Heap.CanWalkHeap);
 
                     foreach (ulong address in data.Keys)
