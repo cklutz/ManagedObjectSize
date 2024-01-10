@@ -375,13 +375,12 @@ namespace ManagedObjectSize.Tests
 
             GetSize(options, name, obj, data);
 
-            GC.EndNoGCRegion();
-#if false
             using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
             {
                 // Got the snapshot. Release GC.
                 GC.EndNoGCRegion();
 
+#if false
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime())
                 {
                     Assert.IsTrue(runtime.Heap.CanWalkHeap);
@@ -417,8 +416,8 @@ namespace ManagedObjectSize.Tests
                         }
                     }
                 }
-            }
 #endif
+            }
         }
 
         // We could also use [DynamicData] to conduct the test of different objects/types, which would
