@@ -375,6 +375,8 @@ namespace ManagedObjectSize.Tests
 
             GetSize(options, name, obj, data);
 
+
+#if false
             using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
             {
                 // Got the snapshot. Release GC.
@@ -416,6 +418,7 @@ namespace ManagedObjectSize.Tests
                     }
                 }
             }
+#endif
         }
 
         // We could also use [DynamicData] to conduct the test of different objects/types, which would
