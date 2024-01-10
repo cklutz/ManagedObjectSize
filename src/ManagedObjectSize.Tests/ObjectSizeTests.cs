@@ -380,9 +380,9 @@ namespace ManagedObjectSize.Tests
                 // Got the snapshot. Release GC.
                 GC.EndNoGCRegion();
 
-#if false
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime())
                 {
+#if false
                     Assert.IsTrue(runtime.Heap.CanWalkHeap);
 
                     foreach (ulong address in data.Keys)
@@ -415,8 +415,8 @@ namespace ManagedObjectSize.Tests
                             throw new Exception($"Handling {currentName}: " + ex.Message, ex);
                         }
                     }
-                }
 #endif
+                }
             }
         }
 
