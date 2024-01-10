@@ -34,6 +34,7 @@ jobs:
         --configuration ${{matrix.configuration}}
         --verbosity normal
         --blame-crash
+        --diag "TestResults-${{ matrix.configuration}}-${{ matrix.dotnet-version }}\diag.log"
         --results-directory "TestResults-${{ matrix.configuration}}-${{ matrix.dotnet-version }}"
         src/ManagedObjectSize.Tests/ManagedObjectSize.Tests.csproj
     - name: Upload dotnet test results
