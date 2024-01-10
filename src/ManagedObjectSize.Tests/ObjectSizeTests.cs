@@ -376,9 +376,9 @@ namespace ManagedObjectSize.Tests
                 // Got the snapshot. Release GC.
                 GC.EndNoGCRegion();
 
-                using (var runtime = dt.ClrVersions.Single().CreateRuntime())
+                using (var runtime = dt.ClrVersions.Single().CreateRuntime("dkdkd"))
                 {
-#if true
+#if false
                     Assert.IsTrue(runtime.Heap.CanWalkHeap);
 
                     foreach (ulong address in data.Keys)
