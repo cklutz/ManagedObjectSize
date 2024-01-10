@@ -1,8 +1,5 @@
 using ManagedObjectSize.ObjectPool;
 using Microsoft.Diagnostics.Runtime;
-using System;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -352,6 +349,10 @@ namespace ManagedObjectSize.Tests
             return result;
         }
 
+        [DllImport("libc")]
+        private static extern int prctl(int option, UIntPtr arg2, UIntPtr arg3, UIntPtr arg4, UIntPtr arg5);
+        private const int PR_SET_PTRACER = 0x59616d61;
+
 
         [TestMethod]
         [DynamicData(nameof(GetTestObjects), DynamicDataSourceType.Method)]
@@ -374,6 +375,11 @@ namespace ManagedObjectSize.Tests
             }
 
             GetSize(options, name, obj, data);
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                prctl(PR_SET_PTRACER, (UIntPtr)Environment.ProcessId, UIntPtr.Zero, UIntPtr.Zero, UIntPtr.Zero);
+            }
 
             using (var dt = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId))
             {
