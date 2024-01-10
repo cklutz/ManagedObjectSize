@@ -379,7 +379,11 @@ namespace ManagedObjectSize.Tests
                 string dacPath = "ffo";
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
-                    dacPath = "/usr/share/dotnet/Microsoft.NETCore.App/7.0.405/libmscordaccore.so";
+                    foreach (string fileName in Directory.EnumerateFiles("/usr/share/dotnet", "libmscordaccore.so", SearchOption.AllDirectories))
+                    {
+                        dacPath = fileName;
+                        break;
+                    }
                 }
 
                 using (var runtime = dt.ClrVersions.Single().CreateRuntime(dacPath))
